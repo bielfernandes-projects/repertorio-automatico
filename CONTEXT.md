@@ -285,3 +285,10 @@ create table if not exists public.setlist_invites (
   created_at timestamp with time zone default now() not null
 );
 ```
+
+
+## Atualização de Branding e Autenticação (Julho 2026)
+- Alteração da logo padrão para a logo oficial (preta sobre fundo branco em todas as telas).
+- Correção das cores do Modal de Autenticação, padronizando com o roxo (purple-600) do app.
+- Adição dos favicons e web manifests completos para PWA e navegadores.
+- Script gerado e executado para salvar 17 músicas extraídas do cache local do usuário e inseridas diretamente na tabela Supabase.

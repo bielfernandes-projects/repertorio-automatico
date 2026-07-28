@@ -109,8 +109,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
       <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
         {/* App Branding Header */}
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 mx-auto shadow-lg shadow-emerald-500/20">
-            <Music className="w-8 h-8 stroke-[2.5]" />
+          <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center mx-auto shadow-lg shadow-purple-500/20 overflow-hidden">
+            <img src="/logo.svg" alt="Logo" className="w-9 h-9 object-contain" />
           </div>
           <h1 className="text-xl font-extrabold text-slate-100">Repertório Automático</h1>
           <p className="text-xs text-slate-400">
@@ -149,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nome de exibição"
                   maxLength={100}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -167,7 +167,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 placeholder="seu.email@exemplo.com"
                 maxLength={254}
                 autoComplete="email"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
               />
             </div>
           </div>
@@ -185,7 +185,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   placeholder="••••••••"
                   minLength={6}
                   autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl pl-9 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -203,7 +203,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               <button
                 type="button"
                 onClick={() => setMode('reset')}
-                className="text-[11px] font-semibold text-emerald-400 hover:underline"
+                className="text-[11px] font-semibold text-purple-400 hover:underline"
               >
                 Esqueceu sua senha?
               </button>
@@ -213,7 +213,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs py-3 rounded-xl shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform"
           >
             {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -237,7 +237,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               Ainda não tem conta?{' '}
               <button
                 onClick={() => setMode('register')}
-                className="font-bold text-emerald-400 hover:underline"
+                className="font-bold text-purple-400 hover:underline"
               >
                 Criar uma agora
               </button>
@@ -247,7 +247,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
               Já tem conta?{' '}
               <button
                 onClick={() => setMode('login')}
-                className="font-bold text-emerald-400 hover:underline"
+                className="font-bold text-purple-400 hover:underline"
               >
                 Fazer Login
               </button>

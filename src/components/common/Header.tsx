@@ -98,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-[#090714]/90 backdrop-blur-md border-b border-zinc-200 dark:border-purple-900/40 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-md shadow-purple-900/30 overflow-hidden shrink-0">
-          <img src="/logo.svg" alt="Logo" className="w-5 h-5 object-contain" />
+          <img src="/logo.png" alt="Logo" className="w-5 h-5 object-contain" />
         </div>
         <div>
           <h1 className="text-base font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">

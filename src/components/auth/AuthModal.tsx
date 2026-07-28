@@ -110,7 +110,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
         {/* App Branding Header */}
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center mx-auto shadow-lg shadow-purple-500/20 overflow-hidden">
-            <img src="/logo.svg" alt="Logo" className="w-9 h-9 object-contain" />
+            <img src="/logo.png" alt="Logo" className="w-9 h-9 object-contain" />
           </div>
           <h1 className="text-xl font-extrabold text-slate-100">Repertório Automático</h1>
           <p className="text-xs text-slate-400">

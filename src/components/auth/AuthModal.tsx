@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { StorageEngine, DEFAULT_USER } from '../../lib/storage';
+import { StorageEngine } from '../../lib/storage';
 import { useAppStore } from '../../lib/store';
-import { Music, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
+import { getSupabaseClient } from '../../lib/supabase';
+import { sanitizeText, isValidEmail } from '../../lib/sanitize';
+import { Music, Mail, Lock, User, ArrowRight, Sparkles, Loader2 } from 'lucide-react';
 
 interface AuthModalProps {
   onLoginSuccess: () => void;
@@ -10,42 +12,95 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
   const { showToast } = useAppStore();
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [email, setEmail] = useState(DEFAULT_USER.email);
-  const [password, setPassword] = useState('123456');
-  const [name, setName] = useState('Gabriel Fernandes');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
 
   const hasPendingShare = typeof localStorage !== 'undefined' && !!localStorage.getItem('pending_share_setlist');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
 
-    if (mode === 'reset') {
-      showToast(`Link de redefinição de senha enviado para ${email}! Check sua caixa de entrada.`, 'info');
-      setMode('login');
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(trimmedEmail)) {
+      showToast('Insira um e-mail válido.', 'error');
       return;
     }
 
-    if (mode === 'register') {
-      const newUser = {
-        id: `usr_${Date.now()}`,
-        email: email.trim().toLowerCase(),
-        name: name.trim() || 'Músico'
-      };
-      StorageEngine.setUser(newUser);
-      showToast(`Conta criada com sucesso! Bem-vindo, ${newUser.name}.`, 'success');
-    } else {
-      // Login
-      const user = {
-        id: `usr_${Date.now()}`,
-        email: email.trim().toLowerCase(),
-        name: name.trim() || email.split('@')[0]
-      };
-      StorageEngine.setUser(user);
-      showToast(`Login realizado como ${user.email}`, 'success');
+    const client = getSupabaseClient();
+    if (!client) {
+      showToast('Serviço de autenticação não disponível. Verifique a configuração do Supabase.', 'error');
+      return;
     }
 
-    onLoginSuccess();
+    setIsLoading(true);
+
+    try {
+      if (mode === 'reset') {
+        const { error } = await client.auth.resetPasswordForEmail(trimmedEmail);
+        if (error) {
+          showToast(`Erro ao enviar redefinição: ${error.message}`, 'error');
+        } else {
+          showToast(`Link de redefinição de senha enviado para ${trimmedEmail}!`, 'info');
+          setMode('login');
+        }
+        return;
+      }
+
+      if (mode === 'register') {
+        if (password.length < 6) {
+          showToast('A senha deve ter pelo menos 6 caracteres.', 'error');
+          return;
+        }
+        const displayName = sanitizeText(name.trim() || 'Músico', 'displayName');
+        const { data, error } = await client.auth.signUp({
+          email: trimmedEmail,
+          password,
+          options: { data: { name: displayName } }
+        });
+        if (error) {
+          showToast(`Erro ao cadastrar: ${error.message}`, 'error');
+          return;
+        }
+        if (data.user) {
+          StorageEngine.setUser({
+            id: data.user.id,
+            email: data.user.email || trimmedEmail,
+            name: displayName
+          });
+          showToast(`Conta criada com sucesso! Bem-vindo, ${displayName}.`, 'success');
+          onLoginSuccess();
+        } else {
+          showToast('Verifique seu e-mail para confirmar a conta.', 'info');
+        }
+      } else {
+        // Login
+        const { data, error } = await client.auth.signInWithPassword({
+          email: trimmedEmail,
+          password
+        });
+        if (error) {
+          showToast('E-mail ou senha incorretos.', 'error');
+          return;
+        }
+        if (data.user) {
+          StorageEngine.setUser({
+            id: data.user.id,
+            email: data.user.email || trimmedEmail,
+            name: data.user.user_metadata?.name || trimmedEmail.split('@')[0]
+          });
+          showToast(`Login realizado com sucesso!`, 'success');
+          onLoginSuccess();
+        }
+      }
+    } catch (err: any) {
+      showToast('Erro inesperado ao autenticar. Tente novamente.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -59,7 +114,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
           <h1 className="text-xl font-extrabold text-slate-100">Repertório Automático</h1>
           <p className="text-xs text-slate-400">
             {mode === 'login' && 'Faça login para acessar seus setlists e acervo'}
-            {mode === 'register' && 'Crie sua conta PWA gratuita'}
+            {mode === 'register' && 'Crie sua conta para começar'}
             {mode === 'reset' && 'Redefinir sua senha via e-mail'}
           </p>
         </div>
@@ -92,6 +147,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nome de exibição"
+                  maxLength={100}
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                 />
               </div>
@@ -108,6 +164,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu.email@exemplo.com"
+                maxLength={254}
+                autoComplete="email"
                 className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
               />
             </div>
@@ -124,6 +182,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  minLength={6}
+                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                   className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
                 />
               </div>
@@ -144,14 +204,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
 
           <button
             type="submit"
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+            disabled={isLoading}
+            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold text-xs py-3 rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-95 transition-transform"
           >
-            <span>
-              {mode === 'login' && 'Entrar no App'}
-              {mode === 'register' && 'Cadastrar Conta'}
-              {mode === 'reset' && 'Enviar E-mail de Redefinição'}
-            </span>
-            <ArrowRight className="w-4 h-4" />
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <span>
+                  {mode === 'login' && 'Entrar no App'}
+                  {mode === 'register' && 'Cadastrar Conta'}
+                  {mode === 'reset' && 'Enviar E-mail de Redefinição'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
 

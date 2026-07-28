@@ -19,6 +19,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { buildCifraClubUrl, parseCifraClubUrl } from '../../lib/utils';
+import { isAllowedFileType } from '../../lib/sanitize';
 
 export const CatalogView: React.FC = () => {
   const { showToast, showCascadeWarning, openCifraModal } = useAppStore();
@@ -61,6 +62,10 @@ export const CatalogView: React.FC = () => {
     }
 
     Array.from(files).forEach((file: File) => {
+      if (!isAllowedFileType(file.name, file.type)) {
+        showToast(`Tipo de arquivo não permitido: "${file.name}". Use PDF ou imagens (JPG, PNG, GIF, WebP).`, 'error');
+        return;
+      }
       if (file.size > 10 * 1024 * 1024) {
         showToast(`Arquivo "${file.name}" é maior que 10MB.`, 'error');
         return;

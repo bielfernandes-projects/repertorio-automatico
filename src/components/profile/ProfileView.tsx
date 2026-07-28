@@ -453,7 +453,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
 
       {/* Logout Action */}
       <button
-        onClick={onLogout}
+        onClick={async () => {
+          try {
+            const client = getSupabaseClient();
+            if (client) await client.auth.signOut();
+          } catch {}
+          localStorage.removeItem('repertorio_user');
+          onLogout();
+        }}
         className="w-full bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-300 font-bold text-xs py-3 rounded-2xl flex items-center justify-center gap-2 transition-colors active:scale-95 shadow-sm"
       >
         <LogOut className="w-4 h-4" />

@@ -82,7 +82,8 @@ export default function App() {
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const shareId = urlParams.get('setlist') || urlParams.get('share');
-      const shareRole = (urlParams.get('role') as 'edit' | 'view') || 'edit';
+      const rawRole = urlParams.get('role');
+      const shareRole: 'edit' | 'view' = rawRole === 'view' ? 'view' : 'edit';
       if (shareId) {
         localStorage.setItem('pending_share_setlist', shareId);
         localStorage.setItem('pending_share_role', shareRole);
@@ -97,7 +98,8 @@ export default function App() {
     if (!isAuthenticated) return;
 
     const pendingShareId = localStorage.getItem('pending_share_setlist');
-    const pendingShareRole = (localStorage.getItem('pending_share_role') as 'edit' | 'view') || 'edit';
+    const rawPendingRole = localStorage.getItem('pending_share_role');
+    const pendingShareRole: 'edit' | 'view' = rawPendingRole === 'view' ? 'view' : 'edit';
     if (pendingShareId) {
       const currentUser = StorageEngine.getUser();
       if (currentUser?.email) {

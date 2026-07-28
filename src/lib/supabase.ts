@@ -315,7 +315,7 @@ export async function syncLocalDataToSupabase(
 
     return { success: true, message: 'Dados sincronizados com o Supabase com sucesso!' };
   } catch (err: any) {
-    console.error('Sync to Supabase error:', err);
+    if ((import.meta as any).env?.DEV) console.error('[DEV] Sync error:', err);
     return { success: false, message: err.message || 'Erro na sincronização com Supabase.' };
   }
 }
@@ -408,7 +408,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
         .map((mRow: any) => ({
           id: mRow.id,
           setlistId: stRow.id,
-          email: 'membro@repertorio.app',
+          email: mRow.user_id || 'membro@repertorio.app',
           role: mRow.role === 'editor' || mRow.role === 'owner' ? 'edit' : 'view',
           status: 'accepted',
           invitedAt: mRow.created_at || new Date().toISOString()
@@ -417,7 +417,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       const setlist: Setlist = {
         id: stRow.id,
         ownerId: stRow.user_id,
-        ownerEmail: 'dono@repertorio.app',
+        ownerEmail: stRow.user_id || 'dono@repertorio.app',
         name: stRow.name,
         createdAt: stRow.created_at,
         updatedAt: stRow.updated_at || stRow.created_at,
@@ -430,7 +430,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
 
     return { success: true, songs, setlists };
   } catch (e: any) {
-    console.error('Fetch remote data error:', e);
+    if ((import.meta as any).env?.DEV) console.error('[DEV] Fetch error:', e);
     return { success: false, message: e.message || 'Erro desconhecido.' };
   }
 }

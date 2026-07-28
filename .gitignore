@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+premium-plan.md
+security-audit.md

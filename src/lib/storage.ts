@@ -52,11 +52,11 @@ function notifySubscribers() {
   triggerAutoBackgroundSync();
 }
 
-// Initial default user
-export const DEFAULT_USER: UserProfile = {
-  id: 'usr_main_01',
-  email: 'gabriel.fernandeshw@gmail.com',
-  name: 'Gabriel Fernandes'
+// Anonymous placeholder user (no hardcoded credentials)
+const ANONYMOUS_USER: UserProfile = {
+  id: '',
+  email: '',
+  name: ''
 };
 
 // Initial default catalog items
@@ -70,17 +70,13 @@ export class StorageEngine {
     return subscribeStorage(callback);
   }
 
-  // Current User
   static getUser(): UserProfile {
     const raw = localStorage.getItem(STORAGE_KEYS.USER);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(DEFAULT_USER));
-      return DEFAULT_USER;
-    }
+    if (!raw) return ANONYMOUS_USER;
     try {
       return JSON.parse(raw);
     } catch {
-      return DEFAULT_USER;
+      return ANONYMOUS_USER;
     }
   }
 
@@ -125,7 +121,7 @@ export class StorageEngine {
     const user = this.getUser();
 
     const newSong: CatalogSong = {
-      id: `song_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: crypto.randomUUID(),
       userId: user.id,
       name: name.trim(),
       artist: artist.trim(),
@@ -175,7 +171,7 @@ export class StorageEngine {
     }
 
     const newDoc: SongDocument = {
-      id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: crypto.randomUUID(),
       name: docData.name,
       type: docData.type,
       dataUrl: docData.dataUrl,
@@ -283,7 +279,7 @@ export class StorageEngine {
     const user = this.getUser();
 
     const newSetlist: Setlist = {
-      id: `setlist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: crypto.randomUUID(),
       ownerId: user.id,
       ownerEmail: user.email,
       name: name.trim(),
@@ -292,7 +288,7 @@ export class StorageEngine {
       members: [],
       blocks: [
         {
-          id: `block_${Date.now()}_1`,
+          id: crypto.randomUUID(),
           setlistId: '',
           name: 'Bloco 1',
           theme: 'Geral',
@@ -316,7 +312,7 @@ export class StorageEngine {
     const user = this.getUser();
     const setlists = this.getSetlists();
 
-    const newId = `setlist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newId = crypto.randomUUID();
     const copy: Setlist = {
       ...original,
       id: newId,
@@ -327,14 +323,14 @@ export class StorageEngine {
       updatedAt: new Date().toISOString(),
       members: [], // Reset shared members for duplicate
       blocks: original.blocks.map((blk) => {
-        const newBlockId = `block_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        const newBlockId = crypto.randomUUID();
         return {
           ...blk,
           id: newBlockId,
           setlistId: newId,
           items: blk.items.map((item) => ({
             ...item,
-            id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: crypto.randomUUID(),
             blockId: newBlockId
           }))
         };
@@ -373,7 +369,7 @@ export class StorageEngine {
     if (!setlist) return null;
 
     const newBlock: Block = {
-      id: `block_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: crypto.randomUUID(),
       setlistId,
       name: name.trim(),
       theme: theme.trim() || 'Geral',
@@ -451,7 +447,7 @@ export class StorageEngine {
     if (!song) return null;
 
     const newItem: BlockItem = {
-      id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: crypto.randomUUID(),
       blockId,
       catalogSongId,
       requestedKey: requestedKey ? normalizeKeyDisplay(requestedKey) : song.originalKey,
@@ -567,7 +563,7 @@ export class StorageEngine {
       mem.status = 'accepted';
     } else {
       setlist.members.push({
-        id: `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id: crypto.randomUUID(),
         setlistId,
         email,
         role,
@@ -598,7 +594,7 @@ export class StorageEngine {
       member.status = 'pending';
     } else {
       member = {
-        id: `mem_${Date.now()}`,
+        id: crypto.randomUUID(),
         setlistId,
         email,
         role,
@@ -616,7 +612,7 @@ export class StorageEngine {
 
     invs = invs.filter((i) => !(i.setlistId === setlistId && i.invitedEmail.toLowerCase() === email));
     invs.push({
-      id: `inv_${Date.now()}`,
+      id: crypto.randomUUID(),
       setlistId,
       setlistName: setlist.name,
       ownerEmail: setlist.ownerEmail,

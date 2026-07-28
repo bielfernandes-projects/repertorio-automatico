@@ -226,7 +226,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   return (
     <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-4 animate-in fade-in duration-200">
       {/* Setlist Title & Actions */}
-      <div className="bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 shadow-md space-y-3">
+      <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 shadow-md space-y-3">
         <div className="flex items-center justify-between gap-2">
           {isEditingName ? (
             <div className="flex items-center gap-2 flex-1">
@@ -322,7 +322,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
         </div>
 
         {filteredBlocks.length === 0 ? (
-          <div className="bg-white/50 dark:bg-[zinc-950]/50 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-6 text-center space-y-2">
+          <div className="bg-white/50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-6 text-center space-y-2">
             <p className="text-xs text-zinc-500 dark:text-zinc-400">Nenhum bloco encontrado para esta busca.</p>
           </div>
         ) : (
@@ -335,7 +335,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                 <div
                   key={block.id}
                   onClick={() => setFocusedBlockId(block.id)}
-                  className="group bg-white dark:bg-[zinc-950] hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-md active:scale-[0.99] space-y-2.5"
+                  className="group bg-white dark:bg-zinc-950 hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-md active:scale-[0.99] space-y-2.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0 flex-1">

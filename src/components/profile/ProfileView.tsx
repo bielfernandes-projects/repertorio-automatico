@@ -194,7 +194,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   return (
     <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-5 animate-in fade-in duration-200">
       {/* Profile Card */}
-      <div className="bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-5 shadow-sm dark:shadow-xl space-y-4">
+      <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-5 shadow-sm dark:shadow-xl space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-purple-900/30">
             {user.name.charAt(0).toUpperCase()}
@@ -346,7 +346,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
           </p>
 
           {userSetlists.length === 0 ? (
-            <div className="bg-white/50 dark:bg-[zinc-950]/50 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 text-center">
+            <div className="bg-white/50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 text-center">
               <p className="text-xs text-zinc-500 dark:text-zinc-400">Você ainda não tem setlists próprios para compartilhar.</p>
             </div>
           ) : (
@@ -354,7 +354,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
               {userSetlists.map((st) => (
                 <div
                   key={st.id}
-                  className="bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
                 >
                   <div>
                     <h4 className="text-xs font-bold text-zinc-900 dark:text-zinc-100">{st.name}</h4>
@@ -495,7 +495,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
       </Modal>
 
       {/* Preferences & PWA Options */}
-      <div className="bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 space-y-3 shadow-sm">
+      <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 space-y-3 shadow-sm">
         <h3 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
           Preferências do App
         </h3>

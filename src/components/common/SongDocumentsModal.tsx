@@ -124,9 +124,9 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-zinc-900 dark:bg-[zinc-950] border border-purple-500/30 dark:border-purple-500/30 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+      <div className="bg-zinc-900 dark:bg-zinc-950 border border-purple-500/30 dark:border-purple-500/30 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-purple-900/40 dark:border-purple-900/40 flex items-center justify-between bg-zinc-950/60 dark:bg-[black]/60">
+        <div className="px-5 py-4 border-b border-purple-900/40 dark:border-purple-900/40 flex items-center justify-between bg-zinc-950/60 dark:bg-black/60">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-2xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
               <FileMusic className="w-5 h-5" />

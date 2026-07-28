@@ -345,6 +345,9 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
   }
 
   try {
+    const user = StorageEngine.getUser();
+    const currentUserUUID = toUUID(user.id);
+
     // Ensure the auth session is restored from local storage before making RLS queries
     await client.auth.getSession();
 
@@ -418,19 +421,23 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       // Find members for this setlist
       const members: SetlistMember[] = (membersData || [])
         .filter((mRow: any) => mRow.setlist_id === stRow.id)
-        .map((mRow: any) => ({
-          id: mRow.id,
-          setlistId: stRow.id,
-          email: mRow.user_id || 'membro@repertorio.app',
-          role: mRow.role === 'editor' || mRow.role === 'owner' ? 'edit' : 'view',
-          status: 'accepted',
-          invitedAt: mRow.created_at || new Date().toISOString()
-        }));
+        .map((mRow: any) => {
+          const isMemberCurrentUser = toUUID(mRow.user_id) === currentUserUUID;
+          return {
+            id: mRow.id,
+            setlistId: stRow.id,
+            email: isMemberCurrentUser ? user.email : (mRow.user_id || 'membro@repertorio.app'),
+            role: mRow.role === 'editor' || mRow.role === 'owner' ? 'edit' : 'view',
+            status: 'accepted',
+            invitedAt: mRow.created_at || new Date().toISOString()
+          };
+        });
 
+      const isOwner = toUUID(stRow.user_id) === currentUserUUID;
       const setlist: Setlist = {
         id: stRow.id,
         ownerId: stRow.user_id,
-        ownerEmail: stRow.user_id || 'dono@repertorio.app',
+        ownerEmail: isOwner ? user.email : (stRow.user_id || 'dono@repertorio.app'),
         name: stRow.name,
         createdAt: stRow.created_at,
         updatedAt: stRow.updated_at || stRow.created_at,

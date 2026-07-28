@@ -67,7 +67,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function App() {
-  const { activeTab, activeSetlistId, focusedBlockId, isDarkMode, setActiveTab, setActiveSetlistId, showToast } = useAppStore();
+  const { 
+    activeTab, 
+    activeSetlistId, 
+    focusedBlockId, 
+    isDarkMode, 
+    setActiveTab, 
+    setActiveSetlistId, 
+    setFocusedBlockId,
+    showToast 
+  } = useAppStore();
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return !!StorageEngine.getUser()?.email;
@@ -81,7 +90,7 @@ export default function App() {
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const shareId = urlParams.get('setlist') || urlParams.get('share');
+      const shareId = urlParams.get('share');
       const rawRole = urlParams.get('role');
       const shareRole: 'edit' | 'view' = rawRole === 'view' ? 'view' : 'edit';
       if (shareId) {
@@ -92,6 +101,86 @@ export default function App() {
       // Ignore URL parsing errors
     }
   }, []);
+
+  // Both-way URL sync for tabs, setlists and blocks
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as 'setlists' | 'catalog' | 'profile';
+    const setlistParam = params.get('setlist');
+    const blockParam = params.get('block');
+
+    const isShareLink = params.has('share');
+
+    if (!isShareLink) {
+      if (tabParam && ['setlists', 'catalog', 'profile'].includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
+      if (setlistParam) {
+        setActiveSetlistId(setlistParam);
+      }
+      if (blockParam) {
+        setTimeout(() => {
+          setFocusedBlockId(blockParam);
+        }, 50);
+      }
+    }
+
+    const handlePopState = () => {
+      const currentParams = new URLSearchParams(window.location.search);
+      const tab = (currentParams.get('tab') as 'setlists' | 'catalog' | 'profile') || 'setlists';
+      const setlist = currentParams.get('setlist');
+      const block = currentParams.get('block');
+
+      if (useAppStore.getState().activeTab !== tab) setActiveTab(tab);
+      if (useAppStore.getState().activeSetlistId !== setlist) setActiveSetlistId(setlist);
+      if (useAppStore.getState().focusedBlockId !== block) setFocusedBlockId(block);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isAuthenticated, setActiveTab, setActiveSetlistId, setFocusedBlockId]);
+
+  // Update URL when store navigation changes
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('share')) return;
+
+    const currentTab = params.get('tab');
+    const currentSetlist = params.get('setlist');
+    const currentBlock = params.get('block');
+
+    const newParams = new URLSearchParams();
+    if (activeTab !== 'setlists') {
+      newParams.set('tab', activeTab);
+    }
+    if (activeSetlistId) {
+      newParams.set('setlist', activeSetlistId);
+    }
+    if (focusedBlockId) {
+      newParams.set('block', focusedBlockId);
+    }
+
+    const newSearch = newParams.toString();
+    const currentSearch = params.toString();
+
+    if (newSearch !== currentSearch) {
+      const isSetlistTransition = activeSetlistId !== currentSetlist;
+      const isBlockTransition = focusedBlockId !== currentBlock;
+      const isTabTransition = activeTab !== (currentTab || 'setlists');
+
+      const url = newSearch ? `?${newSearch}` : window.location.pathname;
+
+      if (isSetlistTransition || isBlockTransition || isTabTransition) {
+        window.history.pushState({}, '', url);
+      } else {
+        window.history.replaceState({}, '', url);
+      }
+    }
+  }, [activeTab, activeSetlistId, focusedBlockId, isAuthenticated]);
 
   // Process pending share link after authentication
   useEffect(() => {
@@ -116,8 +205,8 @@ export default function App() {
       localStorage.removeItem('pending_share_role');
 
       // Clean up URL parameters cleanly
-      if (window.location.search.includes('setlist') || window.location.search.includes('share')) {
-        const cleanUrl = window.location.origin + window.location.pathname;
+      if (window.location.search.includes('share')) {
+        const cleanUrl = window.location.origin + window.location.pathname + `?setlist=${pendingShareId}`;
         window.history.replaceState({}, document.title, cleanUrl);
       }
     }

@@ -157,7 +157,12 @@ export default function App() {
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
-    return <AuthModal onLoginSuccess={() => setIsAuthenticated(true)} />;
+    return (
+      <>
+        <AuthModal onLoginSuccess={() => setIsAuthenticated(true)} />
+        <ToastContainer />
+      </>
+    );
   }
 
   return (

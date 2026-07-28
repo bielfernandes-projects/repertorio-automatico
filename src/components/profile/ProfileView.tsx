@@ -201,6 +201,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
                     className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/50 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-purple-600"
                   />
                 </div>
@@ -219,6 +220,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                     placeholder="Repita a nova senha"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
                     className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/50 rounded-xl pl-8 pr-3 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:border-purple-600"
                   />
                 </div>

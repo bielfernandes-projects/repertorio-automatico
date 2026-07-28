@@ -29,9 +29,9 @@ export const CifraWebviewModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 dark:bg-[#090714]/95 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 dark:bg-[black]/95 backdrop-blur-md animate-in fade-in duration-200">
       {/* Top Controls Bar */}
-      <div className="bg-zinc-900 dark:bg-[#120c24] border-b border-purple-900/40 px-4 py-3 flex items-center justify-between gap-3 shadow-md">
+      <div className="bg-zinc-900 dark:bg-[zinc-950] border-b border-purple-900/40 px-4 py-3 flex items-center justify-between gap-3 shadow-md">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-zinc-100 truncate">{songName}</h2>
@@ -77,7 +77,7 @@ export const CifraWebviewModal: React.FC = () => {
 
       {/* Adjust Slug Row if triggered */}
       {isEditingSlug && (
-        <div className="bg-zinc-900/90 dark:bg-[#120c24]/90 border-b border-purple-900/40 px-4 py-2.5 flex items-center gap-2 animate-in slide-in-from-top duration-200">
+        <div className="bg-zinc-900/90 dark:bg-[zinc-950]/90 border-b border-purple-900/40 px-4 py-2.5 flex items-center gap-2 animate-in slide-in-from-top duration-200">
           <span className="text-xs text-zinc-400 whitespace-nowrap">Slug da cifra:</span>
           <input
             type="text"

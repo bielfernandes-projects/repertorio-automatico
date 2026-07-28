@@ -94,8 +94,8 @@ export const SetlistsList: React.FC = () => {
 
       {/* Empty State Onboarding */}
       {setlists.length === 0 ? (
-        <div className="bg-white/80 dark:bg-[#120c24]/80 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-8 text-center my-6 space-y-4">
-          <div className="w-16 h-16 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800/40 rounded-2xl flex items-center justify-center mx-auto text-purple-600 dark:text-purple-400">
+        <div className="bg-white/80 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 text-center my-6 space-y-4">
+          <div className="w-16 h-16 bg-purple-50 dark:bg-zinc-900 border border-purple-200 dark:border-zinc-800 rounded-2xl flex items-center justify-center mx-auto text-purple-600 dark:text-purple-400">
             <ListMusic className="w-8 h-8" />
           </div>
           <div>
@@ -123,7 +123,7 @@ export const SetlistsList: React.FC = () => {
               <div
                 key={setlist.id}
                 onClick={() => setActiveSetlistId(setlist.id)}
-                className="group bg-white dark:bg-[#120c24] hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-md active:scale-[0.99] flex items-center justify-between gap-3"
+                className="group bg-white dark:bg-zinc-950 hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-zinc-800/80 rounded-2xl p-4 transition-all duration-200 cursor-pointer shadow-sm dark:shadow-md active:scale-[0.99] flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -131,7 +131,7 @@ export const SetlistsList: React.FC = () => {
                       {setlist.name}
                     </h3>
                     {!isOwner && (
-                      <span className="text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] font-semibold bg-purple-50 dark:bg-zinc-900 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-zinc-800 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
                         <Users className="w-3 h-3" />
                         Compartilhado
                       </span>

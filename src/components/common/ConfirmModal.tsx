@@ -9,7 +9,7 @@ export const ConfirmModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-sm bg-white dark:bg-[#120c24] border border-zinc-200 dark:border-purple-900/40 rounded-3xl p-5 shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="w-full max-w-sm bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 rounded-3xl p-5 shadow-2xl animate-in zoom-in-95 duration-200">
         <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mb-3">
           <AlertTriangle className="w-5 h-5" />
         </div>

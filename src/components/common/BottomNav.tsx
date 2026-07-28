@@ -24,7 +24,7 @@ export const BottomNav: React.FC = () => {
   return (
     <nav
       id="bottom-navigation-bar"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#090714]/95 backdrop-blur-lg border-t border-zinc-200 dark:border-purple-900/40 w-full max-w-7xl mx-auto shadow-2xl transition-colors"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-black/95 backdrop-blur-lg border-t border-zinc-200 dark:border-zinc-900 w-full max-w-7xl mx-auto shadow-2xl transition-colors"
     >
       <div className="flex items-center justify-around sm:justify-center sm:gap-12 h-16 px-4">
         <button
@@ -33,8 +33,8 @@ export const BottomNav: React.FC = () => {
           aria-label="Setlists"
           className={`relative p-3 sm:px-6 rounded-2xl transition-all duration-200 active:scale-90 flex items-center justify-center ${
             activeTab === 'setlists'
-              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 shadow-inner'
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-zinc-900/50 shadow-inner'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/30'
           }`}
         >
           <ListMusic className="w-6 h-6 stroke-[2]" />
@@ -50,8 +50,8 @@ export const BottomNav: React.FC = () => {
           aria-label="Catálogo"
           className={`relative p-3 sm:px-6 rounded-2xl transition-all duration-200 active:scale-90 flex items-center justify-center ${
             activeTab === 'catalog'
-              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 shadow-inner'
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-zinc-900/50 shadow-inner'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/30'
           }`}
         >
           <Music className="w-6 h-6 stroke-[2]" />
@@ -67,8 +67,8 @@ export const BottomNav: React.FC = () => {
           aria-label="Perfil"
           className={`relative p-3 sm:px-6 rounded-2xl transition-all duration-200 active:scale-90 flex items-center justify-center ${
             activeTab === 'profile'
-              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 shadow-inner'
-              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+              ? 'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-zinc-900/50 shadow-inner'
+              : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/30'
           }`}
         >
           <User className="w-6 h-6 stroke-[2]" />

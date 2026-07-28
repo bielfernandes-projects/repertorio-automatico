@@ -31,12 +31,12 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
       <div className="absolute inset-0" onClick={onClose} />
 
       {/* Bottom Sheet Card */}
-      <div className="relative w-full max-w-md bg-white dark:bg-[#120c24] border-t sm:border border-zinc-200 dark:border-purple-900/40 rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl z-10 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+      <div className="relative w-full max-w-md bg-white dark:bg-zinc-950 border-t sm:border border-zinc-200 dark:border-zinc-800 p-5 shadow-2xl z-10 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
         {/* Handle pill for mobile touch feel */}
-        <div className="w-12 h-1.5 bg-zinc-300 dark:bg-purple-900/60 rounded-full mx-auto mb-4 sm:hidden" />
+        <div className="w-12 h-1.5 bg-zinc-300 dark:bg-zinc-800 rounded-full mx-auto mb-4 sm:hidden" />
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-3 mb-4 border-b border-zinc-100 dark:border-purple-900/30">
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-zinc-100 dark:border-zinc-900">
           <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">{title}</h2>
           <button
             onClick={onClose}

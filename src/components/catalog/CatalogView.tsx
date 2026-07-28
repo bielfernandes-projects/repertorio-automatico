@@ -195,7 +195,7 @@ export const CatalogView: React.FC = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nome da música ou artista..."
-          className="w-full bg-white dark:bg-[#120c24] border border-zinc-200 dark:border-purple-900/40 focus:border-purple-600 dark:focus:border-purple-500 rounded-xl pl-9 pr-8 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-purple-300/40 focus:outline-none transition-colors"
+          className="w-full bg-white dark:bg-[zinc-950] border border-zinc-200 dark:border-purple-900/40 focus:border-purple-600 dark:focus:border-purple-500 rounded-xl pl-9 pr-8 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-purple-300/40 focus:outline-none transition-colors"
         />
         {search && (
           <button
@@ -209,7 +209,7 @@ export const CatalogView: React.FC = () => {
 
       {/* List of catalog songs */}
       {filteredCatalog.length === 0 ? (
-        <div className="bg-white/80 dark:bg-[#120c24]/80 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-8 text-center space-y-3">
+        <div className="bg-white/80 dark:bg-[zinc-950]/80 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-8 text-center space-y-3">
           <p className="text-xs text-zinc-500 dark:text-zinc-400">Nenhuma música encontrada no seu catálogo.</p>
           <button
             onClick={() => setIsCreateOpen(true)}
@@ -227,7 +227,7 @@ export const CatalogView: React.FC = () => {
             return (
               <div
                 key={song.id}
-                className="bg-white dark:bg-[#120c24] hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-3.5 transition-all duration-200 flex items-center justify-between gap-3 shadow-sm dark:shadow-md"
+                className="bg-white dark:bg-[zinc-950] hover:border-purple-400 dark:hover:border-purple-500/60 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-3.5 transition-all duration-200 flex items-center justify-between gap-3 shadow-sm dark:shadow-md"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">

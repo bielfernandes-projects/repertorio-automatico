@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
   // Header in focused block view
   if (focusedBlock) {
     return (
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-black/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-zinc-100/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
         <button
           id="header-back-to-setlist"
           onClick={() => setFocusedBlockId(null)}
@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
   // Header in Setlist view
   if (activeSetlistId && setlist) {
     return (
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-black/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
+      <header className="sticky top-0 z-30 bg-zinc-100/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <button
             id="header-back-to-setlists-list"
@@ -95,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
 
   // Header for main tabs
   return (
-    <header className="sticky top-0 z-30 bg-white/90 dark:bg-black/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
+    <header className="sticky top-0 z-30 bg-zinc-100/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-900 px-4 sm:px-6 md:px-8 py-3.5 flex items-center justify-between">
       <div className="flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-md shadow-purple-900/30 overflow-hidden shrink-0">
           <img src="/logo.png" alt="Logo" className="w-5 h-5 object-contain" />

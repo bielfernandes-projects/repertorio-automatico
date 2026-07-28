@@ -167,9 +167,9 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-zinc-100 dark:bg-black text-zinc-900 dark:text-zinc-100 font-sans antialiased selection:bg-purple-500 selection:text-white transition-colors duration-200">
+      <div className="min-h-screen bg-zinc-200 dark:bg-black text-zinc-900 dark:text-slate-100 font-sans antialiased selection:bg-purple-500 selection:text-white transition-colors duration-200">
         {/* Responsive App Container Frame */}
-        <div className="w-full max-w-7xl mx-auto min-h-screen bg-zinc-50 dark:bg-black sm:border-x border-zinc-200 dark:border-zinc-900/80 shadow-2xl relative flex flex-col transition-colors duration-200">
+        <div className="w-full max-w-7xl mx-auto min-h-screen bg-zinc-100 dark:bg-black sm:border-x border-zinc-200 dark:border-zinc-900/80 shadow-2xl relative flex flex-col transition-colors duration-200">
           {/* Top Offline Banner */}
           <OfflineBanner />
 

@@ -24,7 +24,7 @@ export const BottomNav: React.FC = () => {
   return (
     <nav
       id="bottom-navigation-bar"
-      className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-black/95 backdrop-blur-lg border-t border-zinc-200 dark:border-zinc-900 w-full max-w-7xl mx-auto shadow-2xl transition-colors"
+      className="fixed bottom-0 left-0 right-0 z-40 bg-zinc-100/95 dark:bg-black/95 backdrop-blur-lg border-t border-zinc-200 dark:border-zinc-900 w-full max-w-7xl mx-auto shadow-2xl transition-colors"
     >
       <div className="flex items-center justify-around sm:justify-center sm:gap-12 h-16 px-4">
         <button

@@ -102,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
         </div>
         <div>
           <h1 className="text-base font-extrabold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Repertório <span className="text-purple-600 dark:text-purple-400">Automático</span>
+            Repertório Automático
           </h1>
           <p className="text-[10px] text-zinc-500 dark:text-purple-300/70 font-medium">
             {activeTab === 'setlists' && 'Seus setlists de apresentações'}

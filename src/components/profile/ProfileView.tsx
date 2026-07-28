@@ -153,7 +153,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   };
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-5 pb-24 animate-in fade-in duration-200">
+    <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-5 animate-in fade-in duration-200">
       {/* Profile Card */}
       <div className="bg-white dark:bg-[#120c24] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-5 shadow-sm dark:shadow-xl space-y-4">
         <div className="flex items-center gap-3">

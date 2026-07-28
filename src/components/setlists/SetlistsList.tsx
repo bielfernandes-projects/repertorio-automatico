@@ -75,7 +75,7 @@ export const SetlistsList: React.FC = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-4 pb-24 animate-in fade-in duration-200">
+    <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-4 animate-in fade-in duration-200">
       {/* Header bar action */}
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">

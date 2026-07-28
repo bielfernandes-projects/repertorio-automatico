@@ -183,7 +183,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   });
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-4 pb-24 animate-in fade-in duration-200">
+    <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-4 animate-in fade-in duration-200">
       {/* Block Header Info */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
         <div className="flex items-center justify-between">

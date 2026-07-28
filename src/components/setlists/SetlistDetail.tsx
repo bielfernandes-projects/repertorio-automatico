@@ -224,7 +224,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   });
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-4 pb-24 animate-in fade-in duration-200">
+    <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-4 animate-in fade-in duration-200">
       {/* Setlist Title & Actions */}
       <div className="bg-white dark:bg-[#120c24] border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-4 shadow-md space-y-3">
         <div className="flex items-center justify-between gap-2">

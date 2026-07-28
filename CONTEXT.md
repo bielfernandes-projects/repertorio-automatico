@@ -72,6 +72,7 @@ classDiagram
         +requestedKey: string
         +position: number
         +originalKeyAtAssignment: string
+        +notes: string
     }
     UserProfile "1" --> "*" CatalogSong
     UserProfile "1" --> "*" Setlist
@@ -105,9 +106,10 @@ Agrupamentos conceituais ou de ritmos organizados dentro de um setlist.
 
 ### 2.4. Itens do Bloco (Referência de Música)
 Relação entre uma música do catálogo e um bloco específico do setlist.
-*   **Campos**: `música_id`, `tom solicitado` (opcional e texto livre).
+*   **Campos**: `música_id`, `tom solicitado` (opcional e texto livre), `notes` (observação opcional).
 *   **Regras de Negócio**:
     *   O **tom solicitado vive na referência** e não no catálogo. Isso permite tocar a mesma música em tons diferentes dependendo da apresentação ou do cantor do dia.
+    *   **Observações/Notas da Apresentação**: É possível adicionar uma observação de texto livre (ex: "Começa do solo de violão", "Crescente em colcheia") para a música na referência. Ela pode ser digitada no momento da adição ou editada inline no bloco focado.
     *   **Sem duplicação**: Não é permitido inserir a mesma música do catálogo duas vezes no mesmo bloco.
     *   Se o tom original for alterado no catálogo, o tom solicitado no bloco não é modificado, mas o item recebe uma badge discreta de atenção indicando que o tom original foi alterado.
 
@@ -145,7 +147,7 @@ A URL base é montada dinamicamente:
 `https://www.cifraclub.com.br/{slug-artista}/{slug-musica}/`
 
 *   **Slug Automatizada**: O texto do nome da música e do artista passa por um normalizador que remove acentos, retira caracteres não-alfanuméricos e substitui espaços por hifens.
-*   **Customização (Slug Override)**: Caso a slug gerada não corresponda ao link correto no Cifra Club, o usuário pode configurar um `slugOverride` editando o campo diretamente no modal de cifras in-app.
+*   **Customização (Slug Override)**: Caso a slug gerada não corresponda ao link correto no Cifra Club, o usuário pode configurar um `slugOverride` editando o campo diretamente no modal de cifras in-app ou no catálogo. **Inteligência ao colar links**: Se o usuário colar uma URL completa do Cifra Club no campo de slug, o app extrai automaticamente os slugs do artista e da música e os atualiza de forma apropriada, resolvendo o problema de cifras não encontradas.
 
 ### 4.2. Transposição Automatizada
 O aplicativo calcula a distância de semitons relativos entre o **Tom Original** cadastrado no catálogo e o **Tom Solicitado** cadastrado na referência:
@@ -255,9 +257,13 @@ create table if not exists public.block_songs (
   song_id uuid references public.songs(id) on delete cascade not null,
   position integer not null default 0,
   requested_key text,
+  notes text,
   created_at timestamp with time zone default now() not null,
   unique(block_id, song_id)
 );
+
+-- Migração caso a tabela já exista:
+-- alter table public.block_songs add column if not exists notes text;
 
 -- Integrantes do Setlist
 create table if not exists public.setlist_members (

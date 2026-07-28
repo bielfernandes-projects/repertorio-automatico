@@ -159,9 +159,13 @@ create table if not exists public.block_songs (
   song_id uuid references public.songs(id) on delete cascade not null,
   position integer not null default 0,
   requested_key text,
+  notes text,
   created_at timestamp with time zone default now() not null,
   unique(block_id, song_id)
 );
+
+-- Migração caso a tabela já exista:
+-- alter table public.block_songs add column if not exists notes text;
 
 create table if not exists public.setlist_members (
   id uuid default uuid_generate_v4() primary key,
@@ -279,7 +283,8 @@ export async function syncLocalDataToSupabase(
                 block_id: blockUUID,
                 song_id: songUUID,
                 position: item.position !== undefined ? item.position : itemIdx,
-                requested_key: item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || ''
+                requested_key: item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || '',
+                notes: item.notes || null
               }], { onConflict: 'id' });
 
               if (bsErr) throw new Error(`Erro vinculando música no bloco: ${bsErr.message}`);
@@ -378,6 +383,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
                 position: bsRow.position || 0,
                 requestedKey: bsRow.requested_key || (matchedSong ? matchedSong.originalKey : 'C'),
                 originalKeyAtAssignment: matchedSong ? matchedSong.originalKey : 'C',
+                notes: bsRow.notes || undefined,
                 songName: matchedSong ? matchedSong.name : 'Música Sem Nome',
                 songArtist: matchedSong ? matchedSong.artist : 'Artista',
                 songOriginalKey: matchedSong ? matchedSong.originalKey : 'C'

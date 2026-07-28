@@ -34,9 +34,14 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [inlineKeyInput, setInlineKeyInput] = useState('');
 
+  // Inline editing notes state
+  const [editingNotesItemId, setEditingNotesItemId] = useState<string | null>(null);
+  const [inlineNotesInput, setInlineNotesInput] = useState('');
+
   // Add song modal state
   const [isAddSongOpen, setIsAddSongOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [newSongNotes, setNewSongNotes] = useState('');
 
   // Quick create catalog song inside modal state
   const [newSongName, setNewSongName] = useState('');
@@ -75,6 +80,13 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     StorageEngine.updateRequestedKey(setlistId, blockId, item.id, inlineKeyInput);
     showToast('Tom solicitado atualizado!', 'success');
     setEditingItemId(null);
+  };
+
+  // Save Inline Notes
+  const handleSaveNotes = (item: BlockItem) => {
+    StorageEngine.updateBlockItemNotes(setlistId, blockId, item.id, inlineNotesInput);
+    showToast('Observação atualizada!', 'success');
+    setEditingNotesItemId(null);
   };
 
   // Remove song from block (with Undo toast!)
@@ -136,7 +148,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
 
   // Add Song from Catalog Selection
   const handleSelectSongFromCatalog = (song: CatalogSong) => {
-    const added = StorageEngine.addSongToBlock(setlistId, blockId, song.id, song.originalKey);
+    const added = StorageEngine.addSongToBlock(setlistId, blockId, song.id, song.originalKey, newSongNotes);
     if (!added) {
       showToast('Esta música já está neste bloco.', 'error');
       return;
@@ -144,6 +156,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     showToast(`"${song.name}" adicionada ao bloco!`, 'success');
     setIsAddSongOpen(false);
     setCatalogSearch('');
+    setNewSongNotes('');
   };
 
   // Create Song in Catalog and Add to Block simultaneously
@@ -160,7 +173,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
       newSongKey || 'C'
     );
 
-    StorageEngine.addSongToBlock(setlistId, blockId, newSong.id, newSong.originalKey);
+    StorageEngine.addSongToBlock(setlistId, blockId, newSong.id, newSong.originalKey, newSongNotes);
     showToast(`Música "${newSong.name}" criada e adicionada!`, 'success');
 
     setIsAddSongOpen(false);
@@ -168,6 +181,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     setNewSongName('');
     setNewSongArtist('');
     setNewSongKey('');
+    setNewSongNotes('');
   };
 
   // Filter Catalog
@@ -254,6 +268,57 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
                     <div className="min-w-0 flex-1">
                       <h4 className="text-sm font-bold text-slate-100 truncate">{item.songName}</h4>
                       <p className="text-xs text-slate-400 truncate">{item.songArtist}</p>
+                      
+                      {/* Observações / Notas */}
+                      {editingNotesItemId === item.id ? (
+                        <div className="flex items-center gap-1.5 mt-1.5 max-w-sm">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={inlineNotesInput}
+                            onChange={(e) => setInlineNotesInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSaveNotes(item)}
+                            placeholder="Observação (ex: Começa no violão)..."
+                            className="flex-1 bg-slate-950 border border-purple-500/40 rounded-lg px-2 py-0.5 text-[11px] text-slate-100 focus:outline-none focus:border-purple-500"
+                          />
+                          <button
+                            onClick={() => handleSaveNotes(item)}
+                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold p-1 rounded-lg active:scale-95 transition-transform"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setEditingNotesItemId(null)}
+                            className="text-slate-400 hover:text-slate-200 text-[10px] font-semibold px-1"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : item.notes ? (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span
+                            onClick={() => {
+                              setEditingNotesItemId(item.id);
+                              setInlineNotesInput(item.notes || '');
+                            }}
+                            className="text-[11px] text-purple-300 hover:text-purple-200 italic cursor-pointer truncate max-w-[180px] sm:max-w-xs hover:underline"
+                            title="Clique para editar a observação"
+                          >
+                            "{item.notes}"
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingNotesItemId(item.id);
+                            setInlineNotesInput('');
+                          }}
+                          className="text-[10px] text-slate-500 hover:text-purple-400 font-semibold mt-0.5 flex items-center gap-0.5 transition-colors cursor-pointer"
+                          title="Adicionar observação"
+                        >
+                          <span>+ obs</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -396,6 +461,20 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
               onChange={(e) => setCatalogSearch(e.target.value)}
               placeholder="Buscar no seu catálogo..."
               className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          {/* Observação Input */}
+          <div className="space-y-1">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Observação para o show (opcional):
+            </label>
+            <input
+              type="text"
+              value={newSongNotes}
+              onChange={(e) => setNewSongNotes(e.target.value)}
+              placeholder="Ex: Começa do solo de violão, Crescente, etc."
+              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
             />
           </div>
 

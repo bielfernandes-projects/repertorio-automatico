@@ -18,7 +18,7 @@ import {
   FileText,
   Image as ImageIcon
 } from 'lucide-react';
-import { buildCifraClubUrl } from '../../lib/utils';
+import { buildCifraClubUrl, parseCifraClubUrl } from '../../lib/utils';
 
 export const CatalogView: React.FC = () => {
   const { showToast, showCascadeWarning, openCifraModal } = useAppStore();
@@ -101,7 +101,7 @@ export const CatalogView: React.FC = () => {
       return;
     }
 
-    const created = StorageEngine.addCatalogSong(name, artist, key || 'C', slug, newDocuments);
+    const created = StorageEngine.addCatalogSong(name, artist, key || 'C', parseCifraClubUrl(slug), newDocuments);
     setIsCreateOpen(false);
     setName('');
     setArtist('');
@@ -122,7 +122,7 @@ export const CatalogView: React.FC = () => {
       name: editName,
       artist: editArtist,
       originalKey: editKey,
-      slugOverride: editSlug
+      slugOverride: parseCifraClubUrl(editSlug)
     });
 
     setEditingSong(null);

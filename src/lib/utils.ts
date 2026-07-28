@@ -126,6 +126,30 @@ export function computeSemitoneShift(originalKey?: string, requestedKey?: string
   return shift;
 }
 
+// Parse full Cifra Club URL to extract artist/song slugs
+export function parseCifraClubUrl(urlOrSlug: string): string {
+  let clean = urlOrSlug.trim();
+  if (clean.includes('cifraclub.com.br')) {
+    try {
+      let urlStr = clean;
+      if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+        urlStr = 'https://' + urlStr;
+      }
+      const parsed = new URL(urlStr);
+      const pathname = parsed.pathname;
+      const segments = pathname.split('/').filter(Boolean);
+      if (segments.length >= 2) {
+        return `${segments[0]}/${segments[1]}`;
+      } else if (segments.length === 1) {
+        return segments[0];
+      }
+    } catch (e) {
+      // Ignore URL parse errors, fall back to returning trimmed string
+    }
+  }
+  return clean;
+}
+
 // Generate Cifra Club URL for artist + song
 export function buildCifraClubUrl(
   artist: string,
@@ -134,8 +158,23 @@ export function buildCifraClubUrl(
   requestedKey?: string,
   slugOverride?: string
 ): { url: string; artistSlug: string; songSlug: string; semitones: number | null } {
-  const artistSlug = toSlug(artist) || 'desconocido';
-  const songSlug = slugOverride ? toSlug(slugOverride) : toSlug(songName) || 'musica';
+  let artistSlug = toSlug(artist) || 'desconocido';
+  let songSlug = toSlug(songName) || 'musica';
+
+  if (slugOverride) {
+    const cleanOverride = slugOverride.trim();
+    if (cleanOverride.includes('/')) {
+      const parts = cleanOverride.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        artistSlug = parts[0];
+        songSlug = parts[1];
+      } else if (parts.length === 1) {
+        songSlug = parts[0];
+      }
+    } else {
+      songSlug = toSlug(cleanOverride);
+    }
+  }
 
   const semitones = computeSemitoneShift(originalKey, requestedKey);
   let url = `https://www.cifraclub.com.br/${artistSlug}/${songSlug}/`;

@@ -44,6 +44,7 @@ export interface BlockItem {
   requestedKey?: string;
   position: number;
   originalKeyAtAssignment?: string;
+  notes?: string; // Observação para a música nesta apresentação
   // Hydrated helper fields
   songName?: string;
   songArtist?: string;

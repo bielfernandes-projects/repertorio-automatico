@@ -435,7 +435,7 @@ export class StorageEngine {
   }
 
   // Block Items (Songs in Block)
-  static addSongToBlock(setlistId: string, blockId: string, catalogSongId: string, requestedKey?: string): BlockItem | null {
+  static addSongToBlock(setlistId: string, blockId: string, catalogSongId: string, requestedKey?: string, notes?: string): BlockItem | null {
     const setlists = this.getSetlists();
     const setlist = setlists.find((s) => s.id === setlistId);
     if (!setlist) return null;
@@ -456,7 +456,8 @@ export class StorageEngine {
       catalogSongId,
       requestedKey: requestedKey ? normalizeKeyDisplay(requestedKey) : song.originalKey,
       position: block.items.length,
-      originalKeyAtAssignment: song.originalKey
+      originalKeyAtAssignment: song.originalKey,
+      notes: notes ? notes.trim() : undefined
     };
 
     block.items.push(newItem);
@@ -479,6 +480,24 @@ export class StorageEngine {
     if (!item) return;
 
     item.requestedKey = requestedKey ? normalizeKeyDisplay(requestedKey) : '';
+    setlist.updatedAt = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
+    notifySubscribers();
+  }
+
+  static updateBlockItemNotes(setlistId: string, blockId: string, itemId: string, notes: string) {
+    const setlists = this.getSetlists();
+    const setlist = setlists.find((s) => s.id === setlistId);
+    if (!setlist) return;
+
+    const block = setlist.blocks.find((b) => b.id === blockId);
+    if (!block) return;
+
+    const item = block.items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    item.notes = notes ? notes.trim() : undefined;
     setlist.updatedAt = new Date().toISOString();
 
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));

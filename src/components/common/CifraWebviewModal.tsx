@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { X, ExternalLink, RefreshCw, Edit3, Check, AlertCircle } from 'lucide-react';
+import { parseCifraClubUrl } from '../../lib/utils';
 
 export const CifraWebviewModal: React.FC = () => {
   const { cifraModal, closeCifraModal, showToast } = useAppStore();
@@ -15,7 +16,8 @@ export const CifraWebviewModal: React.FC = () => {
 
   const handleSaveSlug = () => {
     if (songId) {
-      StorageEngine.updateCatalogSong(songId, { slugOverride: customSlug.trim() });
+      const parsedSlug = parseCifraClubUrl(customSlug);
+      StorageEngine.updateCatalogSong(songId, { slugOverride: parsedSlug });
       showToast('Link da cifra atualizado no catálogo!', 'success');
       setIsEditingSlug(false);
       closeCifraModal();

@@ -196,6 +196,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                   <Lock className="w-3.5 h-3.5 absolute left-3 top-2.5 text-zinc-400" />
                   <input
                     type={showPasswords ? 'text' : 'password'}
+                    id="new-password"
+                    name="new-password"
                     required
                     minLength={6}
                     placeholder="Mínimo 6 caracteres"
@@ -215,6 +217,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                   <Lock className="w-3.5 h-3.5 absolute left-3 top-2.5 text-zinc-400" />
                   <input
                     type={showPasswords ? 'text' : 'password'}
+                    id="confirm-password"
+                    name="confirm-password"
                     required
                     minLength={6}
                     placeholder="Repita a nova senha"

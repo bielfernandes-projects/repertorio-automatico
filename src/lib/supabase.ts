@@ -205,6 +205,9 @@ export async function syncLocalDataToSupabase(
   const targetSetlists = setlists || StorageEngine.getSetlistsForUser(user.email);
 
   try {
+    // Ensure the auth session is restored from local storage before making RLS queries
+    await client.auth.getSession();
+
     // 0. Ensure user profile exists
     await client.from('profiles').upsert([
       { id: userIdUUID, display_name: user.name }
@@ -336,6 +339,9 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
   }
 
   try {
+    // Ensure the auth session is restored from local storage before making RLS queries
+    await client.auth.getSession();
+
     const { data: songsData, error: songsErr } = await client.from('songs').select('*');
     const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
     const { data: blocksData, error: blocksErr } = await client.from('blocks').select('*').order('position', { ascending: true });

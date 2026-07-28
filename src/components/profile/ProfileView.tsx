@@ -20,7 +20,10 @@ import {
   Share2,
   Copy,
   Sparkles,
-  Users
+  Users,
+  Edit3,
+  Check,
+  X
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -30,6 +33,42 @@ interface ProfileViewProps {
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   const { isDarkMode, toggleDarkMode, showToast } = useAppStore();
   const user = StorageEngine.getUser();
+
+  // Edit Name state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(user.name);
+
+  useEffect(() => {
+    setEditName(user.name);
+  }, [user.name]);
+
+  const handleSaveName = async () => {
+    if (!editName.trim()) return;
+    try {
+      StorageEngine.setUser({
+        ...user,
+        name: editName.trim()
+      });
+
+      const client = getSupabaseClient();
+      if (client) {
+        const { toUUID } = await import('../../lib/supabase');
+        const userIdUUID = toUUID(user.id);
+        const { error } = await client.from('profiles').upsert([
+          { id: userIdUUID, display_name: editName.trim() }
+        ], { onConflict: 'id' });
+        
+        if (error) {
+          showToast(`Erro na nuvem: ${error.message}`, 'error');
+          return;
+        }
+      }
+      showToast('Nome de exibição atualizado!', 'success');
+      setIsEditingName(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao atualizar nome.', 'error');
+    }
+  };
 
   const [userSetlists, setUserSetlists] = useState<Setlist[]>(() =>
     StorageEngine.getSetlistsForUser(user.email).filter((s) => s.ownerEmail === user.email)
@@ -161,7 +200,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
             {user.name.charAt(0).toUpperCase()}
           </div>
           <div>
-            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">{user.name}</h2>
+            {isEditingName ? (
+              <div className="flex items-center gap-1.5 mb-1">
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  maxLength={100}
+                  className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/50 rounded-xl px-2.5 py-1 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-purple-600"
+                />
+                <button
+                  onClick={handleSaveName}
+                  className="p-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg active:scale-95 transition-transform cursor-pointer"
+                  title="Confirmar"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => {
+                    setEditName(user.name);
+                    setIsEditingName(false);
+                  }}
+                  className="p-1.5 bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-lg active:scale-95 transition-transform cursor-pointer"
+                  title="Cancelar"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 mb-1">
+                <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">{user.name}</h2>
+                <button
+                  onClick={() => setIsEditingName(true)}
+                  className="p-1 text-zinc-400 hover:text-purple-600 rounded-lg transition-colors cursor-pointer"
+                  title="Editar nome"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <p className="text-xs text-zinc-500 dark:text-purple-300/80 flex items-center gap-1">
               <Mail className="w-3 h-3 text-purple-500" />
               {user.email}

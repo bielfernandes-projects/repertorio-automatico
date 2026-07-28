@@ -6,6 +6,7 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
+  avatarUrl?: string;
 }
 
 export interface SongDocument {

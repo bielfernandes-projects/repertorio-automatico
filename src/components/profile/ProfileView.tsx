@@ -23,7 +23,8 @@ import {
   Users,
   Edit3,
   Check,
-  X
+  X,
+  Camera
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -68,6 +69,81 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
     } catch (err: any) {
       showToast(err?.message || 'Erro ao atualizar nome.', 'error');
     }
+  };
+
+  const triggerAvatarUpload = () => {
+    document.getElementById('avatar-upload-input')?.click();
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Por favor, selecione uma imagem válida.', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 150;
+        const MAX_HEIGHT = 150;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.75);
+
+        try {
+          StorageEngine.setUser({
+            ...user,
+            avatarUrl: compressedBase64
+          });
+
+          const client = getSupabaseClient();
+          if (client) {
+            const { toUUID } = await import('../../lib/supabase');
+            const userIdUUID = toUUID(user.id);
+            const { error } = await client.from('profiles').upsert([
+              { 
+                id: userIdUUID, 
+                display_name: user.name,
+                avatar_url: compressedBase64 
+              }
+            ], { onConflict: 'id' });
+            
+            if (error) {
+              showToast(`Erro ao salvar foto de perfil: ${error.message}`, 'error');
+              return;
+            }
+          }
+          showToast('Foto de perfil atualizada!', 'success');
+        } catch (err: any) {
+          showToast('Erro ao atualizar foto de perfil.', 'error');
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const [userSetlists, setUserSetlists] = useState<Setlist[]>(() =>
@@ -193,11 +269,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
 
   return (
     <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-5 animate-in fade-in duration-200">
+      {/* Hidden File Input for Avatar */}
+      <input
+        type="file"
+        id="avatar-upload-input"
+        accept="image/*"
+        onChange={handleAvatarChange}
+        className="hidden"
+      />
+
       {/* Profile Card */}
       <div className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-2xl p-5 shadow-sm dark:shadow-xl space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-purple-900/30">
-            {user.name.charAt(0).toUpperCase()}
+          <div 
+            onClick={triggerAvatarUpload}
+            className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-md shadow-purple-900/30 overflow-hidden relative group cursor-pointer shrink-0"
+            title="Clique para alterar a foto de perfil"
+          >
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+            ) : (
+              <span>{user.name.charAt(0).toUpperCase()}</span>
+            )}
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera className="w-4 h-4 text-white" />
+            </div>
           </div>
           <div>
             {isEditingName ? (

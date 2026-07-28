@@ -351,6 +351,18 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
     // Ensure the auth session is restored from local storage before making RLS queries
     await client.auth.getSession();
 
+    // Fetch user profile from Supabase
+    if (currentUserUUID) {
+      const { data: profileData } = await client.from('profiles').select('display_name, avatar_url').eq('id', currentUserUUID).maybeSingle();
+      if (profileData) {
+        StorageEngine.setUser({
+          ...user,
+          name: profileData.display_name || user.name,
+          avatarUrl: profileData.avatar_url || undefined
+        });
+      }
+    }
+
     const { data: songsData, error: songsErr } = await client.from('songs').select('*');
     const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
     const { data: blocksData, error: blocksErr } = await client.from('blocks').select('*').order('position', { ascending: true });

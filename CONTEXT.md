@@ -198,6 +198,7 @@ A estrutura técnica do projeto baseia-se em uma arquitetura limpa focada em des
 | **Animações** | Motion (Framer Motion) |
 | **Gerenciamento de Estado** | Zustand (estado volátil de UI, toasts e modais) |
 | **Mecanismo de Cache** | `StorageEngine` (abstração de `localStorage`) |
+| **Métricas & Analytics** | Vercel Analytics (`@vercel/analytics`) |
 
 ### 6.1. Sincronização em Background (Debounce)
 Sempre que uma modificação local é executada, o `StorageEngine` sinaliza um temporizador interno de background (`triggerAutoBackgroundSync` com debounce de **1200ms**). Caso o usuário esteja online e com credenciais Supabase válidas, os dados do localStorage são convertidos e enviados automaticamente para o banco remoto em lote de forma transparente.

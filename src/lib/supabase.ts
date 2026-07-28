@@ -209,15 +209,18 @@ export async function syncLocalDataToSupabase(
     await client.auth.getSession();
 
     // 0. Ensure user profile exists
-    await client.from('profiles').upsert([
+    const { error: profileErr } = await client.from('profiles').upsert([
       { id: userIdUUID, display_name: user.name }
     ], { onConflict: 'id' });
+    if (profileErr) {
+      console.error('[Supabase Profile Upsert Error]', profileErr);
+    }
 
-    // 1. Sync Songs
+    // 1. Sync Songs (Force the current logged in user ID to avoid RLS mismatches)
     if (targetSongs.length > 0) {
       const dbSongs = targetSongs.map((s) => ({
         id: toUUID(s.id),
-        user_id: toUUID(s.userId || user.id),
+        user_id: userIdUUID, // Always force logged-in user UUID
         name: s.name,
         artist: s.artist,
         original_key: s.originalKey || '',
@@ -233,16 +236,19 @@ export async function syncLocalDataToSupabase(
     // 2. Sync Setlists, Blocks, Block Songs and Members
     for (const st of targetSetlists) {
       const setlistUUID = toUUID(st.id);
+      const isOwner = !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase();
 
-      // Upsert Setlist
-      const { error: setlistErr } = await client.from('setlists').upsert([{
-        id: setlistUUID,
-        user_id: toUUID(st.ownerId || user.id),
-        name: st.name,
-        updated_at: st.updatedAt || new Date().toISOString()
-      }], { onConflict: 'id' });
+      // Only upsert the setlist metadata if the current user is the owner (RLS constraint)
+      if (isOwner) {
+        const { error: setlistErr } = await client.from('setlists').upsert([{
+          id: setlistUUID,
+          user_id: userIdUUID,
+          name: st.name,
+          updated_at: st.updatedAt || new Date().toISOString()
+        }], { onConflict: 'id' });
 
-      if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
+        if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
+      }
 
       // Sync Blocks & Block Songs
       if (st.blocks && st.blocks.length > 0) {
@@ -318,7 +324,7 @@ export async function syncLocalDataToSupabase(
 
     return { success: true, message: 'Dados sincronizados com o Supabase com sucesso!' };
   } catch (err: any) {
-    if ((import.meta as any).env?.DEV) console.error('[DEV] Sync error:', err);
+    console.error('[Supabase Sync Error]', err);
     return { success: false, message: err.message || 'Erro na sincronização com Supabase.' };
   }
 }
@@ -346,10 +352,11 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
     const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
     const { data: blocksData, error: blocksErr } = await client.from('blocks').select('*').order('position', { ascending: true });
     const { data: blockSongsData, error: bsErr } = await client.from('block_songs').select('*').order('position', { ascending: true });
-    const { data: membersData } = await client.from('setlist_members').select('*');
+    const { data: membersData, error: membersErr } = await client.from('setlist_members').select('*');
 
-    if (songsErr || setlistsErr || blocksErr || bsErr) {
-      const err = songsErr || setlistsErr || blocksErr || bsErr;
+    if (songsErr || setlistsErr || blocksErr || bsErr || membersErr) {
+      const err = songsErr || setlistsErr || blocksErr || bsErr || membersErr;
+      console.error('[Supabase Fetch Query Error]', err);
       return { success: false, message: err?.message || 'Erro ao carregar dados do Supabase.' };
     }
 
@@ -436,7 +443,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
 
     return { success: true, songs, setlists };
   } catch (e: any) {
-    if ((import.meta as any).env?.DEV) console.error('[DEV] Fetch error:', e);
+    console.error('[Supabase Fetch Error]', e);
     return { success: false, message: e.message || 'Erro desconhecido.' };
   }
 }

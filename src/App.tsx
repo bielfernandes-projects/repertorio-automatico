@@ -148,7 +148,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        // Silent failover to local storage
+        console.error('[Cloud Sync Init Error]', err);
       }
     }
     if (isAuthenticated) {

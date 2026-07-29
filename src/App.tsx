@@ -220,21 +220,49 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Automatic background Supabase data load on mount
+  // Automatic background Supabase data load on mount with merge strategy
   useEffect(() => {
     async function initAutoCloudSync() {
       try {
         const { getSupabaseConfig, fetchRemoteDataFromSupabase, syncLocalDataToSupabase } = await import('./lib/supabase');
         const cfg = getSupabaseConfig();
-        if (cfg.url && cfg.anonKey) {
-          const res = await fetchRemoteDataFromSupabase();
-          if (res.success && res.songs && res.setlists && (res.songs.length > 0 || res.setlists.length > 0)) {
-            if (res.songs.length > 0) StorageEngine.saveCatalog(res.songs);
-            if (res.setlists.length > 0) StorageEngine.saveSetlists(res.setlists);
-          } else {
-            // First time sync local seed data to cloud
-            await syncLocalDataToSupabase();
+        if (!cfg.url || !cfg.anonKey) return;
+
+        const localSongs = StorageEngine.getCatalog();
+        const localSetlists = StorageEngine.getSetlists();
+
+        const res = await fetchRemoteDataFromSupabase();
+        if (res.success && res.songs && res.setlists) {
+          if (res.songs.length > 0 || res.setlists.length > 0) {
+            // Merge: for each local item, keep it if it was updated more recently than the remote version
+            const mergedSongs = [...res.songs];
+            localSongs.forEach((localSong) => {
+              const remoteIdx = mergedSongs.findIndex((s) => s.id === localSong.id);
+              if (remoteIdx >= 0) {
+                if ((localSong.updatedAt || localSong.createdAt) > (mergedSongs[remoteIdx].updatedAt || mergedSongs[remoteIdx].createdAt)) {
+                  mergedSongs[remoteIdx] = localSong;
+                }
+              } else {
+                mergedSongs.push(localSong);
+              }
+            });
+            StorageEngine.saveCatalog(mergedSongs);
+
+            const mergedSetlists = [...res.setlists];
+            localSetlists.forEach((localSt) => {
+              const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
+              if (remoteIdx >= 0) {
+                if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
+                  mergedSetlists[remoteIdx] = localSt;
+                }
+              } else {
+                mergedSetlists.push(localSt);
+              }
+            });
+            StorageEngine.saveSetlists(mergedSetlists);
           }
+          // Push merged/local data to cloud
+          await syncLocalDataToSupabase();
         }
       } catch (err) {
         console.error('[Cloud Sync Init Error]', err);

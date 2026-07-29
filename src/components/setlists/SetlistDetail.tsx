@@ -98,20 +98,29 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   };
 
   // Save Setlist Rename
-  const handleSaveSetlistName = () => {
+  const handleSaveSetlistName = async () => {
     if (editSetName.trim() && editSetName !== setlist.name) {
       StorageEngine.updateSetlistName(setlist.id, editSetName);
+      await triggerSync();
       showToast('Nome do setlist atualizado!', 'success');
     }
     setIsEditingName(false);
   };
 
+  const triggerSync = async () => {
+    if (StorageEngine.getSupabaseConfig().isConnected) {
+      const result = await syncLocalDataToSupabase();
+      if (!result.success) {
+        showToast(`Erro ao sincronizar: ${result.message}`, 'error');
+      }
+    }
+  };
+
   // Add Block submit
-  const handleAddBlockSubmit = (e: React.FormEvent) => {
+  const handleAddBlockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBlockName.trim()) return;
 
-    // Check unique block name in setlist
     const exists = setlist.blocks.some(
       (b) => b.name.toLowerCase() === newBlockName.trim().toLowerCase()
     );
@@ -124,15 +133,15 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     setNewBlockName('');
     setNewBlockTheme('');
     setIsAddBlockModalOpen(false);
+    await triggerSync();
     showToast('Novo bloco adicionado!', 'success');
   };
 
   // Edit Block submit
-  const handleEditBlockSubmit = (e: React.FormEvent) => {
+  const handleEditBlockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBlock || !blockEditName.trim()) return;
 
-    // Check unique name excluding current
     const exists = setlist.blocks.some(
       (b) => b.id !== editingBlock.id && b.name.toLowerCase() === blockEditName.trim().toLowerCase()
     );
@@ -143,6 +152,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
     StorageEngine.updateBlock(setlist.id, editingBlock.id, blockEditName, blockEditTheme);
     setEditingBlock(null);
+    await triggerSync();
     showToast('Bloco atualizado!', 'success');
   };
 
@@ -155,15 +165,16 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       affectedSetlistsCount: 1,
       title: `Excluir Bloco "${block.name}"?`,
       description: `Todas as ${block.items.length} referências de músicas dentro deste bloco serão removidas do setlist.`,
-      onConfirm: () => {
+      onConfirm: async () => {
         StorageEngine.deleteBlock(setlist.id, block.id);
+        await triggerSync();
         showToast(`Bloco "${block.name}" removido.`, 'info');
       }
     });
   };
 
   // Move block position
-  const handleMoveBlock = (index: number, direction: 'up' | 'down', e: React.MouseEvent) => {
+  const handleMoveBlock = async (index: number, direction: 'up' | 'down', e: React.MouseEvent) => {
     e.stopPropagation();
     const newBlocks = [...setlist.blocks];
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
@@ -174,15 +185,17 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     newBlocks[targetIdx] = temp;
 
     StorageEngine.reorderBlocks(setlist.id, newBlocks);
+    await triggerSync();
   };
 
   // Invite member submit
-  const handleInviteSubmit = (e: React.FormEvent) => {
+  const handleInviteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
 
     const success = StorageEngine.sendInvitation(setlist.id, inviteEmail, inviteRole);
     if (success) {
+      await triggerSync();
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');
       setInviteEmail('');
     } else {
@@ -197,8 +210,9 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       description: 'O usuário perderá o acesso para visualizar ou editar este setlist.',
       affectedBlocksCount: 0,
       affectedSetlistsCount: 0,
-      onConfirm: () => {
+      onConfirm: async () => {
         StorageEngine.revokeInvitation(setlist.id, email);
+        await triggerSync();
         showToast('Convite revogado.', 'info');
       }
     });

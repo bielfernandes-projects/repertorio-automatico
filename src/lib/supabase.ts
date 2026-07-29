@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SupabaseConfig, CatalogSong, Setlist, Block, BlockItem, SetlistMember } from '../types';
-import { StorageEngine } from './storage';
+import { StorageEngine, markExplicitSync } from './storage';
 
 function isValidHttpUrl(urlStr: string): boolean {
   if (!urlStr) return false;
@@ -191,6 +191,8 @@ export async function syncLocalDataToSupabase(
   songs?: CatalogSong[],
   setlists?: Setlist[]
 ): Promise<{ success: boolean; message: string }> {
+  markExplicitSync();
+
   const client = getSupabaseClient();
   if (!client) {
     return {
@@ -233,22 +235,22 @@ export async function syncLocalDataToSupabase(
       if (songErr) throw new Error(`Erro sincronizando músicas: ${songErr.message}`);
     }
 
-    // 2. Sync Setlists, Blocks, Block Songs and Members
+    // 2. Sync Setlists, Blocks, Block Songs, Invites and Members
     for (const st of targetSetlists) {
       const setlistUUID = toUUID(st.id);
       const isOwner = !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase();
 
-      // Only upsert the setlist metadata if the current user is the owner (RLS constraint)
-      if (isOwner) {
-        const { error: setlistErr } = await client.from('setlists').upsert([{
-          id: setlistUUID,
-          user_id: userIdUUID,
-          name: st.name,
-          updated_at: st.updatedAt || new Date().toISOString()
-        }], { onConflict: 'id' });
+      // Only sync setlist data if the current user is the owner
+      if (!isOwner) continue;
 
-        if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
-      }
+      const { error: setlistErr } = await client.from('setlists').upsert([{
+        id: setlistUUID,
+        user_id: userIdUUID,
+        name: st.name,
+        updated_at: st.updatedAt || new Date().toISOString()
+      }], { onConflict: 'id' });
+
+      if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
 
       // Sync Blocks & Block Songs
       if (st.blocks && st.blocks.length > 0) {
@@ -266,7 +268,6 @@ export async function syncLocalDataToSupabase(
 
           if (blockErr) throw new Error(`Erro sincronizando bloco "${b.name}": ${blockErr.message}`);
 
-          // Sync songs inside block
           if (b.items && b.items.length > 0) {
             for (let itemIdx = 0; itemIdx < b.items.length; itemIdx++) {
               const item = b.items[itemIdx];
@@ -274,7 +275,6 @@ export async function syncLocalDataToSupabase(
               const songUUID = toUUID(catalogSongId);
               const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
 
-              // Make sure song exists in songs table first
               if (item.songName && item.songArtist) {
                 await client.from('songs').upsert([{
                   id: songUUID,
@@ -302,7 +302,7 @@ export async function syncLocalDataToSupabase(
         }
       }
 
-      // Sync Members
+      // Sync Members and Pending Invites
       if (st.members && st.members.length > 0) {
         for (const m of st.members) {
           const memberUserUUID = toUUID(m.email);
@@ -318,6 +318,18 @@ export async function syncLocalDataToSupabase(
             user_id: memberUserUUID,
             role: m.role === 'edit' ? 'editor' : 'viewer'
           }], { onConflict: 'id' });
+
+          // Sync pending invites to setlist_invites table
+          if (m.status === 'pending') {
+            const inviteId = toUUID(`invite_${st.id}_${m.email}`);
+            await client.from('setlist_invites').upsert([{
+              id: inviteId,
+              setlist_id: setlistUUID,
+              inviter_id: userIdUUID,
+              invitee_email: m.email,
+              status: 'pending'
+            }], { onConflict: 'id' });
+          }
         }
       }
     }
@@ -362,6 +374,14 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
         });
       }
     }
+
+    // Fetch all profiles to build a email -> id lookup for member matching
+    const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
+    const profileEmailMap = new Map<string, string>();
+    (allProfilesData || []).forEach((p: any) => {
+      const email = (p.display_name || '').toLowerCase();
+      if (email) profileEmailMap.set(email, p.id);
+    });
 
     const { data: songsData, error: songsErr } = await client.from('songs').select('*');
     const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
@@ -434,11 +454,19 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       const members: SetlistMember[] = (membersData || [])
         .filter((mRow: any) => mRow.setlist_id === stRow.id)
         .map((mRow: any) => {
-          const isMemberCurrentUser = toUUID(mRow.user_id) === currentUserUUID;
+          const memberProfileId = mRow.user_id;
+          let memberEmail = 'membro@repertorio.app';
+          for (const [email, uid] of profileEmailMap.entries()) {
+            if (uid === memberProfileId) {
+              memberEmail = email;
+              break;
+            }
+          }
+          const isMemberCurrentUser = memberEmail === user.email.toLowerCase();
           return {
             id: mRow.id,
             setlistId: stRow.id,
-            email: isMemberCurrentUser ? user.email : (mRow.user_id || 'membro@repertorio.app'),
+            email: isMemberCurrentUser ? user.email : memberEmail,
             role: mRow.role === 'editor' || mRow.role === 'owner' ? 'edit' : 'view',
             status: 'accepted',
             invitedAt: mRow.created_at || new Date().toISOString()

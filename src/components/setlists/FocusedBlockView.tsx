@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
+import { syncLocalDataToSupabase } from '../../lib/supabase';
 import { Block, BlockItem, CatalogSong } from '../../types';
 import { buildCifraClubUrl, getThemeColorStyle } from '../../lib/utils';
 import { Modal } from '../common/Modal';
@@ -72,34 +73,47 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     );
   }
 
+  const triggerSync = async () => {
+    if (StorageEngine.getSupabaseConfig().isConnected) {
+      const result = await syncLocalDataToSupabase();
+      if (!result.success) {
+        showToast(`Erro ao sincronizar: ${result.message}`, 'error');
+      }
+    }
+  };
+
   const themeStyle = getThemeColorStyle(block.theme);
   const hydratedItems = StorageEngine.hydrateBlockItems(block.items);
 
   // Save Inline Requested Key
-  const handleSaveRequestedKey = (item: BlockItem) => {
+  const handleSaveRequestedKey = async (item: BlockItem) => {
     StorageEngine.updateRequestedKey(setlistId, blockId, item.id, inlineKeyInput);
+    await triggerSync();
     showToast('Tom solicitado atualizado!', 'success');
     setEditingItemId(null);
   };
 
   // Save Inline Notes
-  const handleSaveNotes = (item: BlockItem) => {
+  const handleSaveNotes = async (item: BlockItem) => {
     StorageEngine.updateBlockItemNotes(setlistId, blockId, item.id, inlineNotesInput);
+    await triggerSync();
     showToast('Observação atualizada!', 'success');
     setEditingNotesItemId(null);
   };
 
   // Remove song from block (with Undo toast!)
-  const handleRemoveItem = (item: BlockItem) => {
+  const handleRemoveItem = async (item: BlockItem) => {
     const backupItem = { ...item };
     StorageEngine.removeSongFromBlock(setlistId, blockId, item.id);
+    await triggerSync();
 
     showToast(
       `"${item.songName}" removida do bloco.`,
       'info',
       'Desfazer',
-      () => {
+      async () => {
         StorageEngine.addSongToBlock(setlistId, blockId, backupItem.catalogSongId, backupItem.requestedKey);
+        await triggerSync();
         showToast(`"${item.songName}" restaurada!`, 'success');
       },
       5000
@@ -107,7 +121,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   };
 
   // Move item position inside block
-  const handleMoveItem = (index: number, direction: 'up' | 'down') => {
+  const handleMoveItem = async (index: number, direction: 'up' | 'down') => {
     const newItems = [...block.items];
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
     if (targetIdx < 0 || targetIdx >= newItems.length) return;
@@ -117,6 +131,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     newItems[targetIdx] = temp;
 
     StorageEngine.reorderBlockItems(setlistId, blockId, newItems);
+    await triggerSync();
   };
 
   // Open Cifra Webview
@@ -147,12 +162,13 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   };
 
   // Add Song from Catalog Selection
-  const handleSelectSongFromCatalog = (song: CatalogSong) => {
+  const handleSelectSongFromCatalog = async (song: CatalogSong) => {
     const added = StorageEngine.addSongToBlock(setlistId, blockId, song.id, song.originalKey, newSongNotes);
     if (!added) {
       showToast('Esta música já está neste bloco.', 'error');
       return;
     }
+    await triggerSync();
     showToast(`"${song.name}" adicionada ao bloco!`, 'success');
     setIsAddSongOpen(false);
     setCatalogSearch('');
@@ -160,7 +176,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   };
 
   // Create Song in Catalog and Add to Block simultaneously
-  const handleCreateAndAddSong = (e: React.FormEvent) => {
+  const handleCreateAndAddSong = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSongName.trim() || !newSongArtist.trim()) {
       showToast('Nome e Artista são obrigatórios.', 'error');
@@ -174,6 +190,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     );
 
     StorageEngine.addSongToBlock(setlistId, blockId, newSong.id, newSong.originalKey, newSongNotes);
+    await triggerSync();
     showToast(`Música "${newSong.name}" criada e adicionada!`, 'success');
 
     setIsAddSongOpen(false);

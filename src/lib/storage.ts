@@ -31,17 +31,24 @@ export function subscribeStorage(callback: RealtimeCallback) {
 
 let autoSyncTimeout: any = null;
 
+let lastExplicitSync = 0;
+
+export function markExplicitSync() {
+  lastExplicitSync = Date.now();
+}
+
 function triggerAutoBackgroundSync() {
   if (autoSyncTimeout) clearTimeout(autoSyncTimeout);
   autoSyncTimeout = setTimeout(async () => {
+    if (Date.now() - lastExplicitSync < 3000) return;
     try {
       const { getSupabaseConfig, syncLocalDataToSupabase } = await import('./supabase');
       const cfg = getSupabaseConfig();
       if (cfg.url && cfg.anonKey) {
         await syncLocalDataToSupabase();
       }
-    } catch {
-      // Ignore background sync errors
+    } catch (err) {
+      console.error('[Background Sync Error]', err);
     }
   }, 1200);
 }

@@ -136,6 +136,27 @@ O aplicativo implementa dois métodos de compartilhamento de setlists:
 *   **Sincronização**: Conectado à rede do Supabase Realtime, mudanças de estrutura são sincronizadas em tempo real.
 *   **Resolução de Conflitos**: Estrutura de campos independentes evita colisões comuns. Se dois editores salvarem o mesmo campo simultaneamente, aplica-se a regra de *Last-Write-Wins* (última escrita prevalece).
 
+### 3.4. Arquitetura de Sincronização (Sync Layer)
+
+O app implementa duas camadas complementares de sincronização com o Supabase para garantir consistência de dados mesmo em cenários offline:
+
+#### Sincronização Explícita (Obrigatória)
+Toda operação de escrita relevante (criar bloco, adicionar música, editar tom, mover item, convidar membro) executa `syncLocalDataToSupabase()` **imediatamente após** a mutação local. O resultado é exibido ao usuário via toast (sucesso ou erro). Essa camada substitui a dependência exclusiva do background sync, garantindo que nenhuma alteração relevante deixe de ser persistida na nuvem.
+
+**Arquivos que implementam sync explícito**: `SetlistDetail.tsx`, `FocusedBlockView.tsx`, `SetlistsList.tsx`.
+
+#### Sincronização Automática em Background (Fallback)
+Toda alteração via `StorageEngine` dispara `triggerAutoBackgroundSync()` com debounce de 1200ms. O auto-sync verifica se um sync explícito já ocorreu nos últimos 3 segundos para evitar duplicação. Erros são logados no console, mas não interrompem o fluxo do usuário.
+
+#### Estratégia de Merge na Inicialização
+Ao carregar o app (`App.tsx`), dados remotos e locais são mesclados usando `updatedAt` como critério — o item mais recente vence. Após o merge, o resultado completo é enviado ao Supabase. Isso evita perda de dados offline e garante que dados locais não sincronizados (ex: blocos criados antes das correções) sejam enviados na primeira oportunidade.
+
+#### Proteção de Ownership
+Apenas o dono do setlist pode sincronizar blocos, músicas e membros para a nuvem. Setlists compartilhados dos quais o usuário não é dono são ignorados pelo sync, prevenindo blocos órfãos e violações de RLS.
+
+#### Correção de Compartilhamento (Julho 2026)
+O matching de membros no `fetchRemoteDataFromSupabase()` foi alterado para usar o e-mail armazenado na tabela `profiles` em vez do UUID determinístico (`toUUID`). Isso garante que membros convidados enxerguem corretamente os setlists compartilhados ao acessar de outra conta/dispositivo.
+
 ---
 
 ## 4. Integração de Cifras Externas

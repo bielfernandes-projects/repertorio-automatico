@@ -211,6 +211,13 @@ export async function syncLocalDataToSupabase(
     // Ensure the auth session is restored from local storage before making RLS queries
     await client.auth.getSession();
 
+    // FORCE FRESH READ FROM LOCAL STORAGE
+    const localSetlists = JSON.parse(localStorage.getItem('repertorio_setlists_v2') || '[]');
+    console.log('[Sync] Forcing fresh read from localStorage. Setlists found:', localSetlists.length);
+    if (localSetlists.length > 0) {
+      console.log('[Sync] First setlist members:', JSON.stringify(localSetlists[0].members));
+    }
+
     // 0. Ensure user profile exists
     const { error: profileErr } = await client.from('profiles').upsert([
       { id: userIdUUID, display_name: user.name }

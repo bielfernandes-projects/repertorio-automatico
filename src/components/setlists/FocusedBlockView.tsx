@@ -13,6 +13,120 @@ interface FocusedBlockViewProps {
   blockId: string;
 }
 
+// Key badge sub-component: Original → Requested key display with inline editing
+const KeyBadgeDisplay: React.FC<{
+  item: BlockItem;
+  isEditingKey: boolean;
+  editingItemId: string | null;
+  inlineKeyInput: string;
+  setInlineKeyInput: (val: string) => void;
+  handleSaveRequestedKey: (item: BlockItem) => void;
+  setEditingItemId: (id: string | null) => void;
+}> = ({ item, isEditingKey, inlineKeyInput, setInlineKeyInput, handleSaveRequestedKey, setEditingItemId }) => (
+  <div className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs font-mono flex items-center gap-1.5 shadow-inner">
+    <span className="text-slate-400 font-medium text-[11px]" title="Tom Original">
+      {item.songOriginalKey || '?'}
+    </span>
+    <span className="text-slate-600 font-bold text-[10px]">→</span>
+    {isEditingKey ? (
+      <div className="flex items-center gap-1">
+        <input
+          type="text"
+          autoFocus
+          value={inlineKeyInput}
+          onChange={(e) => setInlineKeyInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSaveRequestedKey(item)}
+          className="w-12 bg-slate-900 border border-emerald-500 rounded px-1 text-center font-bold text-emerald-400 text-xs focus:outline-none"
+        />
+        <button
+          onClick={() => handleSaveRequestedKey(item)}
+          className="text-emerald-400 hover:text-emerald-300 p-0.5"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    ) : (
+      <button
+        onClick={() => {
+          setEditingItemId(item.id);
+          setInlineKeyInput(item.requestedKey || item.songOriginalKey || '');
+        }}
+        className="font-extrabold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 transition-colors"
+        title="Toque para alterar o tom solicitado"
+      >
+        <span>{item.requestedKey || item.songOriginalKey || '?'}</span>
+        <Edit2 className="w-2.5 h-2.5 opacity-60" />
+      </button>
+    )}
+  </div>
+);
+
+// Reusable action buttons for a block item (avoids JSX duplication for mobile/desktop layouts)
+const ItemActionButtons: React.FC<{
+  item: BlockItem;
+  index: number;
+  totalItems: number;
+  onOpenCifra: (item: BlockItem) => void;
+  onOpenDocs: (item: BlockItem) => void;
+  onMoveItem: (index: number, direction: 'up' | 'down') => void;
+  onRemoveItem: (item: BlockItem) => void;
+}> = ({ item, index, totalItems, onOpenCifra, onOpenDocs, onMoveItem, onRemoveItem }) => (
+  <>
+    <button
+      onClick={() => onOpenDocs(item)}
+      className="p-1.5 text-purple-300 hover:text-white hover:bg-purple-900/50 bg-zinc-950 border border-purple-900/40 rounded-xl transition-colors active:scale-95 shadow-sm relative"
+      title="Ver Partituras e Anexos"
+    >
+      <FileMusic className="w-3.5 h-3.5 text-purple-400" />
+      {(() => {
+        const s = StorageEngine.getCatalogSongById(item.catalogSongId);
+        const count = s?.documents?.length || 0;
+        if (count > 0) {
+          return (
+            <span className="absolute -top-1.5 -right-1.5 bg-purple-600 text-white text-[9px] font-extrabold w-3.5 h-3.5 rounded-full flex items-center justify-center ring-2 ring-slate-900">
+              {count}
+            </span>
+          );
+        }
+        return null;
+      })()}
+    </button>
+
+    <button
+      onClick={() => onOpenCifra(item)}
+      className="p-1.5 text-zinc-300 hover:text-amber-400 hover:bg-zinc-800 bg-zinc-950 border border-purple-900/40 rounded-xl transition-colors active:scale-95 shadow-sm"
+      title="Abrir Cifra Club"
+    >
+      <Globe className="w-3.5 h-3.5 text-purple-400" />
+    </button>
+
+    <div className="flex flex-col gap-0.5">
+      <button
+        disabled={index === 0}
+        onClick={() => onMoveItem(index, 'up')}
+        className="p-1 text-slate-500 hover:text-slate-200 disabled:opacity-20 rounded"
+      >
+        <ArrowUp className="w-3 h-3" />
+      </button>
+      <button
+        disabled={index === totalItems - 1}
+        onClick={() => onMoveItem(index, 'down')}
+        className="p-1 text-slate-500 hover:text-slate-200 disabled:opacity-20 rounded"
+      >
+        <ArrowDown className="w-3 h-3" />
+      </button>
+    </div>
+
+    <button
+      onClick={() => onRemoveItem(item)}
+      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+      title="Remover do bloco"
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </button>
+  </>
+);
+
 export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, blockId }) => {
   const { setFocusedBlockId, openCifraModal, showToast } = useAppStore();
 
@@ -275,20 +389,22 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
                 key={item.id}
                 className="bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-3.5 shadow-md space-y-2"
               >
-                <div className="flex items-center justify-between gap-2">
-                  {/* Song Info */}
-                  <div className="min-w-0 flex-1 flex items-center gap-2.5">
-                    <span className="text-sm font-black text-slate-500 font-mono shrink-0 w-6">
+                {/* Mobile: [01. Nome | Tom] then [actions] below */}
+                {/* Desktop: [01. Nome] inline with [Tom + actions] */}
+                <div className="flex flex-col md:flex-row md:items-center gap-1.5 md:gap-2">
+                  {/* Number + Name (flex-1) + Key badge on mobile */}
+                  <div className="min-w-0 flex items-start gap-2.5 flex-1">
+                    <span className="text-sm font-black text-slate-500 font-mono shrink-0 w-6 pt-0.5">
                       {String(index + 1).padStart(2, '0')}.
                     </span>
 
                     <div className="min-w-0 flex-1">
                       <h4 className="text-sm font-bold text-slate-100 truncate">{item.songName}</h4>
                       <p className="text-xs text-slate-400 truncate">{item.songArtist}</p>
-                      
+
                       {/* Observações / Notas */}
                       {editingNotesItemId === item.id ? (
-                        <div className="flex items-center gap-1.5 mt-1.5 max-w-sm">
+                        <div className="flex items-center gap-1.5 mt-1.5">
                           <input
                             type="text"
                             autoFocus
@@ -321,7 +437,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
                             className="text-[11px] text-purple-300 hover:text-purple-200 italic cursor-pointer truncate max-w-[180px] sm:max-w-xs hover:underline"
                             title="Clique para editar a observação"
                           >
-                            "{item.notes}"
+                            &ldquo;{item.notes}&rdquo;
                           </span>
                         </div>
                       ) : (
@@ -337,111 +453,61 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
                         </button>
                       )}
                     </div>
+
+                    {/* Key badge inline on mobile (right side) */}
+                    <div className="md:hidden shrink-0 self-start">
+                      <KeyBadgeDisplay
+                        item={item}
+                        isEditingKey={isEditingKey}
+                        editingItemId={editingItemId}
+                        inlineKeyInput={inlineKeyInput}
+                        setInlineKeyInput={setInlineKeyInput}
+                        handleSaveRequestedKey={handleSaveRequestedKey}
+                        setEditingItemId={setEditingItemId}
+                      />
+                    </div>
                   </div>
 
-                  {/* Keys Display: Original Key -> Requested Key */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs font-mono flex items-center gap-1.5 shadow-inner">
-                      {/* Original Key (Subtle left) */}
-                      <span className="text-slate-400 font-medium text-[11px]" title="Tom Original">
-                        {item.songOriginalKey || '?'}
-                      </span>
-
-                      <span className="text-slate-600 font-bold text-[10px]">→</span>
-
-                      {/* Requested Key (Bold right / Inline Edit) */}
-                      {isEditingKey ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={inlineKeyInput}
-                            onChange={(e) => setInlineKeyInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSaveRequestedKey(item)}
-                            className="w-12 bg-slate-900 border border-emerald-500 rounded px-1 text-center font-bold text-emerald-400 text-xs focus:outline-none"
-                          />
-                          <button
-                            onClick={() => handleSaveRequestedKey(item)}
-                            className="text-emerald-400 hover:text-emerald-300 p-0.5"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setEditingItemId(item.id);
-                            setInlineKeyInput(item.requestedKey || item.songOriginalKey || '');
-                          }}
-                          className="font-extrabold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 transition-colors"
-                          title="Toque para alterar o tom solicitado"
-                        >
-                          <span>{item.requestedKey || item.songOriginalKey || '?'}</span>
-                          <Edit2 className="w-2.5 h-2.5 opacity-60" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Dedicated Partituras / Anexos Icon Button */}
-                    <button
-                      onClick={() => {
-                        const s = StorageEngine.getCatalogSongById(item.catalogSongId);
+                  {/* Desktop: Key + Actions (hidden on mobile) */}
+                  <div className="hidden md:flex items-center gap-1.5 md:shrink-0">
+                    <KeyBadgeDisplay
+                      item={item}
+                      isEditingKey={isEditingKey}
+                      editingItemId={editingItemId}
+                      inlineKeyInput={inlineKeyInput}
+                      setInlineKeyInput={setInlineKeyInput}
+                      handleSaveRequestedKey={handleSaveRequestedKey}
+                      setEditingItemId={setEditingItemId}
+                    />
+                    <ItemActionButtons
+                      item={item}
+                      index={index}
+                      totalItems={hydratedItems.length}
+                      onOpenCifra={handleOpenCifra}
+                      onOpenDocs={(it) => {
+                        const s = StorageEngine.getCatalogSongById(it.catalogSongId);
                         if (s) setDocsModalSong(s);
                       }}
-                      className="p-2 text-purple-300 hover:text-white hover:bg-purple-900/50 bg-zinc-950 dark:bg-zinc-950 border border-purple-900/40 rounded-xl transition-colors active:scale-95 shadow-sm relative"
-                      title="Ver Partituras e Anexos"
-                    >
-                      <FileMusic className="w-4 h-4 text-purple-400" />
-                      {(() => {
-                        const s = StorageEngine.getCatalogSongById(item.catalogSongId);
-                        const count = s?.documents?.length || 0;
-                        if (count > 0) {
-                          return (
-                            <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[9px] font-extrabold w-3.5 h-3.5 rounded-full flex items-center justify-center">
-                              {count}
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </button>
-
-                    {/* Dedicated Cifra Club Icon Button */}
-                    <button
-                      onClick={() => handleOpenCifra(item)}
-                      className="p-2 text-zinc-300 hover:text-amber-400 hover:bg-zinc-800 bg-zinc-950 border border-purple-900/40 rounded-xl transition-colors active:scale-95 shadow-sm"
-                      title="Abrir Cifra Club"
-                    >
-                      <Globe className="w-4 h-4 text-purple-400" />
-                    </button>
-
-                    {/* Reorder up/down */}
-                    <div className="flex flex-col gap-0.5">
-                      <button
-                        disabled={index === 0}
-                        onClick={() => handleMoveItem(index, 'up')}
-                        className="p-1 text-slate-500 hover:text-slate-200 disabled:opacity-20 rounded"
-                      >
-                        <ArrowUp className="w-3 h-3" />
-                      </button>
-                      <button
-                        disabled={index === hydratedItems.length - 1}
-                        onClick={() => handleMoveItem(index, 'down')}
-                        className="p-1 text-slate-500 hover:text-slate-200 disabled:opacity-20 rounded"
-                      >
-                        <ArrowDown className="w-3 h-3" />
-                      </button>
-                    </div>
-
-                    {/* Remove song from block */}
-                    <button
-                      onClick={() => handleRemoveItem(item)}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors ml-1"
-                      title="Remover do bloco"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      onMoveItem={handleMoveItem}
+                      onRemoveItem={handleRemoveItem}
+                    />
                   </div>
+                </div>
+
+                {/* Action buttons row (mobile only) */}
+                <div className="md:hidden flex items-center gap-1.5 pt-2 mt-1 border-t border-slate-800/50">
+                  <ItemActionButtons
+                    item={item}
+                    index={index}
+                    totalItems={hydratedItems.length}
+                    onOpenCifra={handleOpenCifra}
+                    onOpenDocs={(it) => {
+                      const s = StorageEngine.getCatalogSongById(it.catalogSongId);
+                      if (s) setDocsModalSong(s);
+                    }}
+                    onMoveItem={handleMoveItem}
+                    onRemoveItem={handleRemoveItem}
+                  />
                 </div>
 
                 {/* Badge if catalog original key was changed after assignment */}

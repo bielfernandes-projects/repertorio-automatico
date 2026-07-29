@@ -14,6 +14,7 @@ import { CatalogView } from './components/catalog/CatalogView';
 import { ProfileView } from './components/profile/ProfileView';
 import { AuthModal } from './components/auth/AuthModal';
 import { AlertCircle, RotateCcw } from 'lucide-react';
+import { Modal } from './components/common/Modal';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -85,6 +86,15 @@ export default function App() {
   // Modal triggers
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isAddBlockModalOpen, setIsAddBlockModalOpen] = useState(false);
+
+  // Pending share confirmation modal state
+  const [shareConfirmData, setShareConfirmData] = useState<{
+    id: string;
+    role: 'edit' | 'view';
+    name: string;
+    ownerEmail: string;
+  } | null>(null);
+  const [isFetchingShareDetails, setIsFetchingShareDetails] = useState(false);
 
   // Parse share parameters from URL on load
   useEffect(() => {
@@ -197,88 +207,125 @@ export default function App() {
     const pendingShareRole: 'edit' | 'view' = rawPendingRole === 'view' ? 'view' : 'edit';
     
     if (pendingShareId) {
-      const currentUser = StorageEngine.getUser();
-      if (currentUser?.email) {
-        const processShare = async () => {
-          // 1. Try to join using current local setlists cache
-          let joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
-          
-          // 2. If not found locally, fetch remote data from Supabase first and try again
-          if (!joinedSetlist) {
-            console.log('[Share Link] Local join failed. Fetching remote data...');
-            try {
-              const { fetchRemoteDataFromSupabase } = await import('./lib/supabase');
-              const res = await fetchRemoteDataFromSupabase();
-              console.log('[Share Link] Remote fetch result:', res);
-              
-              if (res.success && res.setlists) {
-                console.log('[Share Link] Remote setlists count:', res.setlists.length);
-                // Save the merged remote setlists into local storage
-                const mergedSetlists = [...res.setlists];
-                // Sync local changes to keep them merged
-                const localSetlists = StorageEngine.getSetlists();
-                console.log('[Share Link] Local setlists count before merge:', localSetlists.length);
-                
-                localSetlists.forEach((localSt) => {
-                  const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
-                  if (remoteIdx >= 0) {
-                    if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
-                      mergedSetlists[remoteIdx] = localSt;
-                    }
-                  } else {
-                    mergedSetlists.push(localSt);
-                  }
-                });
-                StorageEngine.saveSetlists(mergedSetlists);
+      const fetchShareDetails = async () => {
+        setIsFetchingShareDetails(true);
+        try {
+          const { getSupabaseClient } = await import('./lib/supabase');
+          const client = getSupabaseClient();
+          if (client) {
+            // Fetch setlist name and user_id
+            const { data: setlistData } = await client
+              .from('setlists')
+              .select('name, owner_email')
+              .eq('id', pendingShareId)
+              .maybeSingle();
 
-                // Try joining again now that remote setlists have been merged/loaded
-                joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
-                console.log('[Share Link] Joined after remote fetch:', joinedSetlist ? 'Success' : 'Failed');
-              } else {
-                console.log('[Share Link] Remote fetch unsuccessful or empty setlists');
-              }
-            } catch (err) {
-              console.error('[Pending Share Sync Error]', err);
+            if (setlistData) {
+              setShareConfirmData({
+                id: pendingShareId,
+                role: pendingShareRole,
+                name: setlistData.name,
+                ownerEmail: setlistData.owner_email || 'Outro usuário'
+              });
+            } else {
+              showToast('Setlist compartilhado não foi encontrado no banco de dados.', 'error');
+              localStorage.removeItem('pending_share_setlist');
+              localStorage.removeItem('pending_share_role');
             }
           }
-
-          if (joinedSetlist) {
-            setActiveTab('setlists');
-            setActiveSetlistId(pendingShareId);
-            showToast(`Setlist "${joinedSetlist.name}" aberto via link de compartilhamento (${pendingShareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
-
-            // Persist the membership directly to Supabase.
-            // NOTE: syncLocalDataToSupabase cannot be used here because it skips
-            // setlists where the current user is not the owner (isOwner guard).
-            // selfJoinSetlistAsMember inserts the member record directly.
-            try {
-              const { selfJoinSetlistAsMember } = await import('./lib/supabase');
-              await selfJoinSetlistAsMember(pendingShareId, pendingShareRole);
-            } catch (err) {
-              console.error('[Share Link] selfJoinSetlistAsMember failed:', err);
-            }
-          } else {
-            showToast('Setlist compartilhado não foi encontrado.', 'error');
-          }
-
+        } catch (err) {
+          console.error('[Share Details Fetch Error]', err);
+          showToast('Erro ao carregar detalhes do convite.', 'error');
           localStorage.removeItem('pending_share_setlist');
           localStorage.removeItem('pending_share_role');
+        } finally {
+          setIsFetchingShareDetails(false);
+        }
+      };
 
-          // Clean up URL parameters cleanly (handles ?share or ?setlist with role)
-          const search = window.location.search;
-          if (search.includes('share') || (search.includes('setlist') && search.includes('role'))) {
-            const cleanUrl = window.location.origin + window.location.pathname + `?setlist=${pendingShareId}`;
-            window.history.replaceState({}, document.title, cleanUrl);
+      fetchShareDetails();
+    }
+  }, [isAuthenticated, showToast]);
+
+  const handleAcceptShare = async () => {
+    if (!shareConfirmData) return;
+    const { id, role, name } = shareConfirmData;
+    const currentUser = StorageEngine.getUser();
+
+    if (currentUser?.email) {
+      // 1. Try to join using current local setlists cache
+      let joinedSetlist = StorageEngine.joinSetlistViaLink(id, currentUser.email, role);
+      
+      // 2. If not found locally, fetch remote data from Supabase first and try again
+      if (!joinedSetlist) {
+        try {
+          const { fetchRemoteDataFromSupabase } = await import('./lib/supabase');
+          const res = await fetchRemoteDataFromSupabase();
+          
+          if (res.success && res.setlists) {
+            // Save the merged remote setlists into local storage
+            const mergedSetlists = [...res.setlists];
+            const localSetlists = StorageEngine.getSetlists();
+            
+            localSetlists.forEach((localSt) => {
+              const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
+              if (remoteIdx >= 0) {
+                if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
+                  mergedSetlists[remoteIdx] = localSt;
+                }
+              } else {
+                mergedSetlists.push(localSt);
+              }
+            });
+            StorageEngine.saveSetlists(mergedSetlists);
+
+            // Try joining again now that remote setlists have been merged/loaded
+            joinedSetlist = StorageEngine.joinSetlistViaLink(id, currentUser.email, role);
           }
-        };
+        } catch (err) {
+          console.error('[Pending Share Sync Error]', err);
+        }
+      }
 
-        processShare();
+      if (joinedSetlist) {
+        setActiveTab('setlists');
+        setActiveSetlistId(id);
+        showToast(`Setlist "${joinedSetlist.name}" salvo na sua conta!`, 'success');
+
+        try {
+          const { selfJoinSetlistAsMember } = await import('./lib/supabase');
+          await selfJoinSetlistAsMember(id, role);
+        } catch (err) {
+          console.error('[Share Link] selfJoinSetlistAsMember failed:', err);
+        }
       } else {
-        localStorage.removeItem('pending_share_setlist');
-        localStorage.removeItem('pending_share_role');
+        showToast('Setlist compartilhado não foi encontrado.', 'error');
       }
     }
-  }, [isAuthenticated, setActiveTab, setActiveSetlistId, showToast]);
+
+    // Clean up
+    setShareConfirmData(null);
+    localStorage.removeItem('pending_share_setlist');
+    localStorage.removeItem('pending_share_role');
+
+    // Clean up URL parameters cleanly
+    const search = window.location.search;
+    if (search.includes('share') || (search.includes('setlist') && search.includes('role'))) {
+      const cleanUrl = window.location.origin + window.location.pathname + `?setlist=${id}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  };
+
+  const handleDeclineShare = () => {
+    setShareConfirmData(null);
+    localStorage.removeItem('pending_share_setlist');
+    localStorage.removeItem('pending_share_role');
+
+    // Clean up URL parameters cleanly
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+    showToast('Convite cancelado.', 'info');
+  };
 
   useEffect(() => {
     if (isDarkMode) {
@@ -400,6 +447,44 @@ export default function App() {
           <ToastContainer />
           <ConfirmModal />
           <CifraWebviewModal />
+
+          {/* Pending Share Invite Confirmation Modal */}
+          {shareConfirmData && (
+            <Modal
+              isOpen={!!shareConfirmData}
+              onClose={handleDeclineShare}
+              title="Salvar na minha conta"
+            >
+              <div className="space-y-4">
+                <p className="text-xs text-zinc-600 dark:text-zinc-300">
+                  O usuário <strong className="text-purple-600 dark:text-purple-400">{shareConfirmData.ownerEmail}</strong> convida você para colaborar no setlist:
+                </p>
+                <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/40 rounded-2xl">
+                  <h4 className="text-sm font-bold text-zinc-950 dark:text-zinc-50">{shareConfirmData.name}</h4>
+                  <p className="text-[11px] text-zinc-500 dark:text-purple-300/70 mt-1">
+                    Permissão: <span className="font-semibold text-purple-600 dark:text-purple-400">{shareConfirmData.role === 'edit' ? 'Edição' : 'Visualização'}</span>
+                  </p>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Deseja salvar este setlist compartilhado na sua conta? Você poderá acessá-lo na seção de "Setlists Compartilhados".
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    onClick={handleDeclineShare}
+                    className="px-4 py-2.5 text-xs font-semibold text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleAcceptShare}
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-purple-900/20 active:scale-95 transition-transform"
+                  >
+                    Salvar na minha conta
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
         </div>
       </div>
     </ErrorBoundary>

@@ -6,7 +6,7 @@ import { Block, BlockItem, CatalogSong } from '../../types';
 import { buildCifraClubUrl } from '../../lib/utils';
 import { Modal } from '../common/Modal';
 import { SongDocumentsModal } from '../common/SongDocumentsModal';
-import { ArrowLeft, Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, Search, Edit2, Check, Music, X } from 'lucide-react';
+import { ArrowLeft, Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Search, Edit2, Check, Music, X } from 'lucide-react';
 
 interface FocusedBlockViewProps {
   setlistId: string;
@@ -169,6 +169,12 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   // Dismissed warning badges state
   const [dismissedWarnings, setDismissedWarnings] = useState<Record<string, boolean>>({});
 
+  // Duplicate song warning across blocks
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    song: CatalogSong;
+    existingBlocks: Block[];
+  } | null>(null);
+
   const handleDismissWarning = (itemId: string) => {
     setDismissedWarnings((prev) => ({ ...prev, [itemId]: true }));
   };
@@ -274,8 +280,8 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     );
   };
 
-  // Add Song from Catalog Selection
-  const handleSelectSongFromCatalog = async (song: CatalogSong) => {
+  // Core add logic (no duplicate check — called directly or after confirmation)
+  const doAddSongToBlock = async (song: CatalogSong) => {
     const added = StorageEngine.addSongToBlock(setlistId, blockId, song.id, song.originalKey, newSongNotes);
     if (!added) {
       showToast('Esta música já está neste bloco.', 'error');
@@ -286,6 +292,19 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     setIsAddSongOpen(false);
     setCatalogSearch('');
     setNewSongNotes('');
+  };
+
+  // Add Song from Catalog Selection
+  const handleSelectSongFromCatalog = async (song: CatalogSong) => {
+    const otherBlocks = setlist?.blocks.filter(b => b.id !== blockId) || [];
+    const existingInOtherBlocks = otherBlocks.filter(b =>
+      b.items.some(item => item.catalogSongId === song.id)
+    );
+    if (existingInOtherBlocks.length > 0) {
+      setDuplicateWarning({ song, existingBlocks: existingInOtherBlocks });
+      return;
+    }
+    doAddSongToBlock(song);
   };
 
   // Create Song in Catalog and Add to Block simultaneously
@@ -613,6 +632,42 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
           </div>
         </div>
       </Modal>
+
+      {/* Duplicate song warning across blocks */}
+      {duplicateWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-3xl p-5 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center mb-3">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 mb-1">Música já em outro bloco</h3>
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed mb-4">
+              &ldquo;{duplicateWarning.song.name}&rdquo; já está no bloco{' '}
+              <strong>{duplicateWarning.existingBlocks.map(b => b.name).join(', ')}</strong>
+              . Deseja adicionar mesmo assim neste bloco?
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-purple-900/30">
+              <button
+                onClick={() => setDuplicateWarning(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-300 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const s = duplicateWarning.song;
+                  setDuplicateWarning(null);
+                  doAddSongToBlock(s);
+                }}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors shadow-md shadow-emerald-600/20"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Adicionar mesmo assim</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Song Documents Modal */}
       <SongDocumentsModal

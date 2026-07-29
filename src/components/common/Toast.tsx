@@ -8,21 +8,21 @@ export const ToastContainer: React.FC = () => {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4 space-y-2 pointer-events-none">
+    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4 space-y-2 pointer-events-none">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl p-3.5 flex items-center justify-between gap-3 text-xs backdrop-blur-md animate-in slide-in-from-top duration-200"
+          className="pointer-events-auto bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl p-3.5 flex items-start justify-between gap-3 text-xs backdrop-blur-md animate-in slide-in-from-top duration-200"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-start gap-2.5 min-w-0">
             {toast.type === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             ) : toast.type === 'info' ? (
-              <Info className="w-4 h-4 text-sky-400 shrink-0" />
+              <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             )}
-            <span className="text-slate-100 font-medium truncate">{toast.message}</span>
+            <span className="text-slate-100 font-medium break-words leading-relaxed">{toast.message}</span>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">

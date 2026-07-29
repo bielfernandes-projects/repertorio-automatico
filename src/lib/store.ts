@@ -66,7 +66,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setIsOffline: (offline) => set({ isOffline: offline }),
 
   toasts: [],
-  showToast: (message, type = 'success', actionLabel, onAction, duration = 3000) => {
+  showToast: (message, type = 'success', actionLabel, onAction, duration = 5000) => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const newToast: ToastMessage = { id, message, type, actionLabel, onAction, duration };
 

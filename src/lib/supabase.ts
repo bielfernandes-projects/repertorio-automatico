@@ -379,12 +379,15 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
     const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
     const profileEmailMap = new Map<string, string>();
     (allProfilesData || []).forEach((p: any) => {
-      const email = (p.display_name || '').toLowerCase();
+      const email = (p.display_name || '').toLowerCase().trim();
       if (email) profileEmailMap.set(email, p.id);
     });
+    console.log('[Supabase Fetch] ProfileEmailMap:', Object.fromEntries(profileEmailMap));
 
     const { data: songsData, error: songsErr } = await client.from('songs').select('*');
     const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
+    console.log('[Supabase Fetch] Setlists data query result:', setlistsData, 'Error:', setlistsErr);
+
     const { data: blocksData, error: blocksErr } = await client.from('blocks').select('*').order('position', { ascending: true });
     const { data: blockSongsData, error: bsErr } = await client.from('block_songs').select('*').order('position', { ascending: true });
     const { data: membersData, error: membersErr } = await client.from('setlist_members').select('*');

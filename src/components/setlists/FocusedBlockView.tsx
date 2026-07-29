@@ -3,7 +3,7 @@ import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { syncLocalDataToSupabase } from '../../lib/supabase';
 import { Block, BlockItem, CatalogSong } from '../../types';
-import { buildCifraClubUrl, getThemeColorStyle } from '../../lib/utils';
+import { buildCifraClubUrl } from '../../lib/utils';
 import { Modal } from '../common/Modal';
 import { SongDocumentsModal } from '../common/SongDocumentsModal';
 import { ArrowLeft, Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, Search, Edit2, Check, Music, X } from 'lucide-react';
@@ -196,7 +196,6 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     }
   };
 
-  const themeStyle = getThemeColorStyle(block.theme);
   const hydratedItems = StorageEngine.hydrateBlockItems(block.items);
 
   // Save Inline Requested Key
@@ -329,36 +328,6 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
 
   return (
     <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-32 space-y-4 animate-in fade-in duration-200">
-      {/* Block Header Info */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-extrabold text-slate-100">{block.name}</h2>
-            {block.theme && (
-              <span
-                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${themeStyle.bg} ${themeStyle.text} ${themeStyle.border}`}
-              >
-                {block.theme}
-              </span>
-            )}
-          </div>
-
-          <button
-            id="add-song-to-block-cta"
-            onClick={() => setIsAddSongOpen(true)}
-            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl shadow-md active:scale-95 transition-transform"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Música</span>
-          </button>
-        </div>
-
-        <p className="text-xs text-slate-400">
-          Setlist: <span className="text-slate-200 font-semibold">{setlist.name}</span> •{' '}
-          {block.items.length} {block.items.length === 1 ? 'música' : 'músicas'}
-        </p>
-      </div>
-
       {/* Numbered Vertical Songs List */}
       {hydratedItems.length === 0 ? (
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-8 text-center space-y-3">
@@ -375,7 +344,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <><div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           {hydratedItems.map((item, index) => {
             const originalKeyChanged =
               item.originalKeyAtAssignment &&
@@ -530,7 +499,21 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
             );
           })}
         </div>
-      )}
+
+        {/* Bottom bar: song count + add button */}
+        <div className="flex items-center justify-between bg-slate-900/50 border border-slate-800 rounded-2xl px-4 py-3 shadow-sm">
+          <span className="text-xs text-slate-400 font-medium">
+            {block.items.length} {block.items.length === 1 ? 'música' : 'músicas'} neste bloco
+          </span>
+          <button
+            onClick={() => setIsAddSongOpen(true)}
+            className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-transform"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Música</span>
+          </button>
+        </div>
+        </>)}
 
       {/* Modal Add Song to Block (with search & inline create) */}
       <Modal isOpen={isAddSongOpen} onClose={() => setIsAddSongOpen(false)} title="Adicionar Música ao Bloco">

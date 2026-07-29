@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { StorageEngine } from '../../lib/storage';
 import { CatalogSong, SongDocument } from '../../types';
 import { useAppStore } from '../../lib/store';
@@ -13,7 +13,8 @@ import {
   Image as ImageIcon,
   Plus,
   AlertCircle,
-  File
+  File,
+  ExternalLink
 } from 'lucide-react';
 
 interface SongDocumentsModalProps {
@@ -23,6 +24,17 @@ interface SongDocumentsModalProps {
   onSongUpdated?: (updatedSong: CatalogSong) => void;
 }
 
+const dataUrlToBlobUrl = (dataUrl: string): string => {
+  const [header, base64] = dataUrl.split(',');
+  const mime = header.split(':')[1]?.split(';')[0] || 'application/octet-stream';
+  const binary = atob(base64);
+  const array = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    array[i] = binary.charCodeAt(i);
+  }
+  return URL.createObjectURL(new Blob([array], { type: mime }));
+};
+
 export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
   song,
   isOpen,
@@ -31,7 +43,45 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
 }) => {
   const { showToast } = useAppStore();
   const [activePreviewDoc, setActivePreviewDoc] = useState<SongDocument | null>(null);
+  const [pdfError, setPdfError] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  const openDocExternal = useCallback((doc: SongDocument) => {
+    const a = document.createElement('a');
+    a.href = doc.dataUrl;
+    a.download = doc.name;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
+  const closePreview = useCallback(() => {
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+    setActivePreviewDoc(null);
+    setPdfError(false);
+  }, [pdfBlobUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    };
+  }, [pdfBlobUrl]);
+
+  const openPreview = useCallback((doc: SongDocument) => {
+    setPdfError(false);
+    if (doc.type === 'pdf') {
+      const blobUrl = dataUrlToBlobUrl(doc.dataUrl);
+      setPdfBlobUrl(blobUrl);
+    }
+    setActivePreviewDoc(doc);
+  }, []);
 
   if (!isOpen || !song) return null;
 
@@ -211,7 +261,7 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => setActivePreviewDoc(doc)}
+                      onClick={() => openPreview(doc)}
                       className="p-2 text-purple-300 hover:text-white hover:bg-purple-900/50 rounded-xl transition-colors"
                       title="Visualizar documento"
                     >
@@ -258,15 +308,25 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
           <div className="w-full max-w-4xl bg-zinc-900 border border-purple-500/30 rounded-2xl overflow-hidden flex flex-col h-[90vh]">
             <div className="px-4 py-3 bg-zinc-950 border-b border-purple-900/40 flex items-center justify-between">
               <span className="text-xs font-bold text-zinc-100 truncate">{activePreviewDoc.name}</span>
-              <button
-                onClick={() => setActivePreviewDoc(null)}
-                className="p-1 text-zinc-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openDocExternal(activePreviewDoc)}
+                  className="text-[10px] text-purple-300 hover:text-white bg-purple-950/60 hover:bg-purple-900/80 border border-purple-700/40 px-2.5 py-1 rounded-lg transition-colors"
+                  title="Abrir em navegador externo"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 inline mr-1" />
+                  Externo
+                </button>
+                <button
+                  onClick={closePreview}
+                  className="p-1 text-zinc-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-auto bg-black flex items-center justify-center p-2">
+            <div ref={previewRef} className="flex-1 overflow-auto bg-black flex items-center justify-center p-2">
               {activePreviewDoc.type === 'image' ? (
                 <img
                   src={activePreviewDoc.dataUrl}
@@ -274,11 +334,27 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
                   className="max-w-full max-h-full object-contain rounded-lg"
                 />
               ) : activePreviewDoc.type === 'pdf' ? (
-                <iframe
-                  src={activePreviewDoc.dataUrl}
-                  title={activePreviewDoc.name}
-                  className="w-full h-full rounded-lg bg-white"
-                />
+                pdfError ? (
+                  <div className="text-center p-8 text-zinc-400 space-y-3">
+                    <AlertCircle className="w-12 h-12 mx-auto text-amber-400" />
+                    <p className="text-sm text-zinc-300 font-semibold">Visualização não disponível neste dispositivo</p>
+                    <p className="text-xs text-zinc-500">Clique em "Externo" ou baixe o PDF para visualizar.</p>
+                    <button
+                      onClick={() => openDocExternal(activePreviewDoc)}
+                      className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Abrir Externamente</span>
+                    </button>
+                  </div>
+                ) : (
+                  <iframe
+                    src={pdfBlobUrl || activePreviewDoc.dataUrl}
+                    title={activePreviewDoc.name}
+                    className="w-full h-full rounded-lg bg-white"
+                    onError={() => setPdfError(true)}
+                  />
+                )
               ) : (
                 <div className="text-center p-8 text-zinc-400 space-y-3">
                   <File className="w-12 h-12 mx-auto text-purple-400" />

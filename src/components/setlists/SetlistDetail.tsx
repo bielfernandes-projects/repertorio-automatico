@@ -206,7 +206,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       }
 
       console.log('[Invite] Syncing setlist after invite...');
-      await triggerSync(StorageEngine.getSetlists());
+      await triggerSync(updatedSetlist ? [updatedSetlist] : undefined);
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');
       setInviteEmail('');
     } else {

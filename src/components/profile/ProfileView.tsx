@@ -4,6 +4,15 @@ import { StorageEngine } from '../../lib/storage';
 import { syncLocalDataToSupabase, getSupabaseClient } from '../../lib/supabase';
 import { Setlist } from '../../types';
 import { Modal } from '../common/Modal';
+
+// Capture beforeinstallprompt globally before React mounts
+let globalDeferredPrompt: any = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    globalDeferredPrompt = e;
+  });
+}
 import {
   Mail,
   Moon,
@@ -168,7 +177,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   // PWA install prompt state
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(globalDeferredPrompt);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
   const reloadData = () => {
     setUserSetlists(
@@ -179,6 +189,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   useEffect(() => {
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
+      globalDeferredPrompt = e;
       setDeferredPrompt(e);
     };
 
@@ -195,16 +206,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   }, [user.email]);
 
   const handleInstallClick = async () => {
+    if (isStandalone) {
+      showToast('O app já está instalado no seu dispositivo.', 'info');
+      return;
+    }
     if (!deferredPrompt) {
-      showToast('O app já está instalado ou não é suportado pelo navegador.', 'info');
+      showToast('Use o menu do navegador > "Adicionar à Tela de Início" para instalar.', 'info');
       return;
     }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
       showToast('Repertório Automático instalado com sucesso!', 'success');
+      setDeferredPrompt(null);
     }
-    setDeferredPrompt(null);
   };
 
   const handleOpenShareModal = (setlistId?: string) => {
@@ -616,7 +631,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
           <div className="flex items-center gap-2.5 text-xs text-zinc-800 dark:text-zinc-200">
             <Download className="w-4 h-4 text-purple-600 dark:text-purple-400" />
             <div>
-              <span className="font-semibold block">Instalar PWA no Celular</span>
+              <span className="font-semibold block">Instalar App no Celular</span>
               <span className="text-[10px] text-zinc-400 dark:text-zinc-500">Adicione à Tela de Início</span>
             </div>
           </div>

@@ -244,9 +244,10 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
               {documents.map((doc) => (
                 <div
                   key={doc.id}
-                  className="bg-zinc-950/80 border border-purple-900/30 hover:border-purple-500/40 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-colors shadow-sm"
+                  onClick={() => openPreview(doc)}
+                  className="bg-zinc-950/80 border border-purple-900/30 hover:border-purple-500/40 hover:bg-zinc-900/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition-colors shadow-sm cursor-pointer"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 pointer-events-none">
                     <div className="p-2.5 bg-purple-950/60 border border-purple-800/50 rounded-xl shrink-0">
                       {getDocIcon(doc.type)}
                     </div>
@@ -261,7 +262,7 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
-                      onClick={() => openPreview(doc)}
+                      onClick={(e) => { e.stopPropagation(); openPreview(doc); }}
                       className="p-2 text-purple-300 hover:text-white hover:bg-purple-900/50 rounded-xl transition-colors"
                       title="Visualizar documento"
                     >
@@ -271,6 +272,7 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
                     <a
                       href={doc.dataUrl}
                       download={doc.name}
+                      onClick={(e) => e.stopPropagation()}
                       className="p-2 text-zinc-400 hover:text-purple-300 hover:bg-zinc-800 rounded-xl transition-colors"
                       title="Baixar arquivo"
                     >
@@ -278,7 +280,7 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
                     </a>
 
                     <button
-                      onClick={() => handleDeleteDoc(doc)}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDoc(doc); }}
                       className="p-2 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded-xl transition-colors"
                       title="Excluir anexo"
                     >

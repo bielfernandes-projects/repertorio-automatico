@@ -396,12 +396,16 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       }
     }
 
-    // Fetch all profiles to build a email -> id lookup for member matching
+    // Fetch all profiles to build:
+    // - email → id map (for member matching)
+    // - id → display_name map (for showing owner name in the UI)
     const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
     const profileEmailMap = new Map<string, string>();
+    const profileIdToNameMap = new Map<string, string>();
     (allProfilesData || []).forEach((p: any) => {
       const email = (p.display_name || '').toLowerCase().trim();
       if (email) profileEmailMap.set(email, p.id);
+      if (p.id && p.display_name) profileIdToNameMap.set(p.id, p.display_name);
     });
     console.log('[Supabase Fetch] ProfileEmailMap:', Object.fromEntries(profileEmailMap));
 
@@ -513,6 +517,7 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
         id: stRow.id,
         ownerId: stRow.user_id,
         ownerEmail: resolvedOwnerEmail,
+        ownerDisplayName: profileIdToNameMap.get(stRow.user_id) || undefined,
         name: stRow.name,
         createdAt: stRow.created_at,
         updatedAt: stRow.updated_at || stRow.created_at,

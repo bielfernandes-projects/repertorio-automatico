@@ -297,7 +297,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <Users className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
               <span className="text-zinc-700 dark:text-purple-200 text-[11px] truncate">
-                Compartilhado por <strong>{setlist.ownerEmail}</strong>
+                Compartilhado por <strong>{setlist.ownerDisplayName || setlist.ownerEmail}</strong>
               </span>
             </div>
             <button
@@ -656,7 +656,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
               {/* Owner */}
               <div className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
                 <div>
-                  <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{setlist.ownerEmail}</span>
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{setlist.ownerDisplayName || setlist.ownerEmail}</span>
                   <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-1 font-semibold">
                     <Shield className="w-3 h-3" />
                     Dono do Setlist

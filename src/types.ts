@@ -74,6 +74,7 @@ export interface Setlist {
   id: string;
   ownerId: string;
   ownerEmail: string;
+  ownerDisplayName?: string; // Display name of the setlist owner, resolved from profiles
   name: string;
   createdAt: string;
   updatedAt: string;

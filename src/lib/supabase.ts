@@ -114,12 +114,14 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
 export const SUPABASE_SQL_SCHEMA = `-- Repertório Automático - Supabase Schema
 create extension if not exists "uuid-ossp";
 
+-- Perfis de Usuário
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   display_name text not null default '',
   created_at timestamp with time zone default now() not null
 );
 
+-- Músicas do Catálogo
 create table if not exists public.songs (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
@@ -132,9 +134,7 @@ create table if not exists public.songs (
   created_at timestamp with time zone default now() not null
 );
 
--- Migração caso a tabela já exista:
--- alter table public.songs add column if not exists documents jsonb default '[]'::jsonb;
-
+-- Setlists
 create table if not exists public.setlists (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references public.profiles(id) on delete cascade not null,
@@ -144,6 +144,7 @@ create table if not exists public.setlists (
   unique(user_id, name)
 );
 
+-- Blocos
 create table if not exists public.blocks (
   id uuid default uuid_generate_v4() primary key,
   setlist_id uuid references public.setlists(id) on delete cascade not null,
@@ -153,6 +154,7 @@ create table if not exists public.blocks (
   created_at timestamp with time zone default now() not null
 );
 
+-- Músicas do Bloco (Referências)
 create table if not exists public.block_songs (
   id uuid default uuid_generate_v4() primary key,
   block_id uuid references public.blocks(id) on delete cascade not null,
@@ -164,9 +166,7 @@ create table if not exists public.block_songs (
   unique(block_id, song_id)
 );
 
--- Migração caso a tabela já exista:
--- alter table public.block_songs add column if not exists notes text;
-
+-- Integrantes do Setlist
 create table if not exists public.setlist_members (
   id uuid default uuid_generate_v4() primary key,
   setlist_id uuid references public.setlists(id) on delete cascade not null,
@@ -176,6 +176,7 @@ create table if not exists public.setlist_members (
   unique(setlist_id, user_id)
 );
 
+-- Convites
 create table if not exists public.setlist_invites (
   id uuid default uuid_generate_v4() primary key,
   setlist_id uuid references public.setlists(id) on delete cascade not null,
@@ -185,107 +186,82 @@ create table if not exists public.setlist_invites (
   created_at timestamp with time zone default now() not null
 );
 
--- ================================================================
--- MIGRATION: Corrigir RLS para Colaboração (Membros e Músicas)
--- Execute no SQL Editor do Supabase para corrigir os erros 403
--- ================================================================
+-- =====================================================================
+-- MIGRATION: Corrigir RLS para Colaboração sem Recursão Infinita
+-- Execute no SQL Editor do Supabase para aplicar as correções
+-- =====================================================================
 
--- 1. AJUSTE DE RLS PARA MÚSICAS (songs)
--- Remove a política antiga que restringia a leitura apenas ao dono da música
--- drop policy if exists "Users can view own songs" on public.songs;
+-- 1. HELPERS SECURITY DEFINER (Roda como postgres, ignora RLS interno)
+drop function if exists public.is_setlist_owner(uuid, uuid) cascade;
+drop function if exists public.is_setlist_member(uuid, uuid) cascade;
+drop function if exists public.is_setlist_editor(uuid, uuid) cascade;
+drop function if exists public.has_link_share(uuid) cascade;
+drop function if exists public.has_email_invite(uuid, text) cascade;
 
--- Nova política: O dono pode ver suas músicas E membros de setlists compartilhados podem ver as músicas contidas neles
--- create policy "Users can view own songs or songs in shared setlists"
---   on public.songs for select
---   using (
---     auth.uid() = user_id
---     or exists (
---       select 1 from public.block_songs bs
---       join public.blocks b on b.id = bs.block_id
---       join public.setlists s on s.id = b.setlist_id
---       join public.setlist_members sm on sm.setlist_id = s.id
---       where bs.song_id = songs.id
---       and sm.user_id = auth.uid()
---     )
---   );
+create or replace function public.is_setlist_owner(setlist_uuid uuid, user_uuid uuid)
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.setlists
+    where id = setlist_uuid
+    and user_id = user_uuid
+  );
+end;
+$$ language plpgsql security definer;
 
--- 2. AJUSTE DE RLS PARA MEMBROS (setlist_members)
--- Remove as políticas antigas
--- drop policy if exists "Members can view setlist members" on public.setlist_members;
--- drop policy if exists "Owners can manage setlist members" on public.setlist_members;
+create or replace function public.is_setlist_member(setlist_uuid uuid, user_uuid uuid)
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.setlist_members
+    where setlist_id = setlist_uuid
+    and user_id = user_uuid
+  );
+end;
+$$ language plpgsql security definer;
 
--- A. Permitir leitura dos membros para quem já é membro ou possui acesso por link ativo
--- create policy "Members can view setlist members"
---   on public.setlist_members for select
---   using (
---     exists (
---       select 1 from public.setlist_members sm
---       where sm.setlist_id = setlist_members.setlist_id
---       and sm.user_id = auth.uid()
---     )
---     or exists (
---       select 1 from public.setlist_invites
---       where setlist_id = setlist_members.setlist_id
---       and invitee_email = '__link_share__'
---     )
---   );
+create or replace function public.is_setlist_editor(setlist_uuid uuid, user_uuid uuid)
+returns boolean as $$
+begin
+  if exists (select 1 from public.setlists where id = setlist_uuid and user_id = user_uuid) then
+    return true;
+  end if;
+  return exists (
+    select 1 from public.setlist_members
+    where setlist_id = setlist_uuid
+    and user_id = user_uuid
+    and role in ('owner', 'editor')
+  );
+end;
+$$ language plpgsql security definer;
 
--- B. Permitir inserção de membros (Dono convidando OU convidado entrando via link/email)
--- create policy "Anyone can insert setlist members if owner or invited"
---   on public.setlist_members for insert
---   with check (
---     exists (
---       select 1 from public.setlists s
---       where s.id = setlist_members.setlist_id
---       and s.user_id = auth.uid()
---     )
---     or (
---       auth.uid() = user_id
---       and (
---         exists (
---           select 1 from public.setlist_invites i
---           where i.setlist_id = setlist_members.setlist_id
---           and i.invitee_email = '__link_share__'
---         )
---         or exists (
---           select 1 from public.setlist_invites i
---           where i.setlist_id = setlist_members.setlist_id
---           and lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
---         )
---       )
---     )
---   );
+create or replace function public.has_link_share(setlist_uuid uuid)
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.setlist_invites
+    where setlist_id = setlist_uuid
+    and invitee_email = '__link_share__'
+  );
+end;
+$$ language plpgsql security definer;
 
--- C. Permitir atualização/deleção pelo Dono OU pelo próprio membro saindo do setlist
--- create policy "Owners can update/delete members, or members can leave"
---   on public.setlist_members for all
---   using (
---     exists (
---       select 1 from public.setlists s
---       where s.id = setlist_members.setlist_id
---       and s.user_id = auth.uid()
---     )
---     or auth.uid() = user_id
---   );
+create or replace function public.has_email_invite(setlist_uuid uuid, user_email text)
+returns boolean as $$
+begin
+  if user_email is null or user_email = '' then
+    return false;
+  end if;
+  return exists (
+    select 1 from public.setlist_invites
+    where setlist_id = setlist_uuid
+    and lower(invitee_email) = lower(user_email)
+  );
+end;
+$$ language plpgsql security definer;
 
--- 3. AJUSTE DE RLS PARA INVITES (setlist_invites)
--- Remove política antiga
--- drop policy if exists "Inviters can view own invites" on public.setlist_invites;
-
--- Nova política: Permitir visualização de convites vinculados ao usuário
--- create policy "Anyone can view invites they are involved in"
---   on public.setlist_invites for select
---   using (
---     inviter_id = auth.uid()
---     or invitee_email = '__link_share__'
---     or lower(invitee_email) = lower(auth.jwt() ->> 'email')
---     or exists (
---       select 1 from public.setlist_members sm
---       where sm.setlist_id = setlist_invites.setlist_id
---       and sm.user_id = auth.uid()
---       and sm.role = 'owner'
---     )
---   );
+-- 2. POLÍTICAS DE RLS
+-- (Consulte o arquivo walkthrough.md ou o plano de migração para o SQL de drop de políticas antigas antes de aplicar as novas)
 `;
 
 /**

@@ -239,14 +239,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
 
   const handleCopyLink = (stId: string) => {
     const role = getRoleForSetlist(stId);
-    const url = `${window.location.origin}${window.location.pathname}?setlist=${stId}&role=${role}`;
+    const url = `${window.location.origin}${window.location.pathname}?share=${stId}&role=${role}`;
     navigator.clipboard.writeText(url);
     showToast(`Link copiado com permissão de ${role === 'edit' ? 'Edição' : 'Visualização'}!`, 'success');
   };
 
   const handleSendWhatsApp = (st: Setlist) => {
     const role = getRoleForSetlist(st.id);
-    const url = `${window.location.origin}${window.location.pathname}?setlist=${st.id}&role=${role}`;
+    const url = `${window.location.origin}${window.location.pathname}?share=${st.id}&role=${role}`;
     const permText = role === 'edit' ? '(Modo Edição)' : '(Modo Visualização)';
     const msg = `🎵 Confira o setlist "${st.name}" no Repertório Automático ${permText}:\n${url}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
@@ -580,7 +580,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
                 <input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}${window.location.pathname}?setlist=${selectedSetlistId}&role=${getRoleForSetlist(selectedSetlistId)}`}
+                  value={`${window.location.origin}${window.location.pathname}?share=${selectedSetlistId}&role=${getRoleForSetlist(selectedSetlistId)}`}
                   className="flex-1 bg-transparent text-xs text-zinc-800 dark:text-zinc-200 font-mono focus:outline-none truncate"
                 />
                 <button

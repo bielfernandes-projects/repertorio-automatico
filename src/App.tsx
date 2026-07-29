@@ -90,9 +90,15 @@ export default function App() {
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      const shareId = urlParams.get('share');
+      let shareId = urlParams.get('share');
       const rawRole = urlParams.get('role');
       const shareRole: 'edit' | 'view' = rawRole === 'view' ? 'view' : 'edit';
+      
+      // Retrocompatibility check: if ?setlist= exists and there is a role param, treat it as a share link
+      if (!shareId && urlParams.has('setlist') && urlParams.has('role')) {
+        shareId = urlParams.get('setlist');
+      }
+
       if (shareId) {
         localStorage.setItem('pending_share_setlist', shareId);
         localStorage.setItem('pending_share_role', shareRole);
@@ -111,7 +117,7 @@ export default function App() {
     const setlistParam = params.get('setlist');
     const blockParam = params.get('block');
 
-    const isShareLink = params.has('share');
+    const isShareLink = params.has('share') || (params.has('setlist') && params.has('role'));
 
     if (!isShareLink) {
       if (tabParam && ['setlists', 'catalog', 'profile'].includes(tabParam)) {
@@ -147,7 +153,7 @@ export default function App() {
     if (!isAuthenticated) return;
 
     const params = new URLSearchParams(window.location.search);
-    if (params.has('share')) return;
+    if (params.has('share') || (params.has('setlist') && params.has('role'))) return;
 
     const currentTab = params.get('tab');
     const currentSetlist = params.get('setlist');
@@ -189,25 +195,67 @@ export default function App() {
     const pendingShareId = localStorage.getItem('pending_share_setlist');
     const rawPendingRole = localStorage.getItem('pending_share_role');
     const pendingShareRole: 'edit' | 'view' = rawPendingRole === 'view' ? 'view' : 'edit';
+    
     if (pendingShareId) {
       const currentUser = StorageEngine.getUser();
       if (currentUser?.email) {
-        const joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
-        if (joinedSetlist) {
-          setActiveTab('setlists');
-          setActiveSetlistId(pendingShareId);
-          showToast(`Setlist "${joinedSetlist.name}" aberto via link de compartilhamento (${pendingShareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
-        } else {
-          showToast('Setlist compartilhado não foi encontrado.', 'error');
-        }
-      }
-      localStorage.removeItem('pending_share_setlist');
-      localStorage.removeItem('pending_share_role');
+        const processShare = async () => {
+          // 1. Try to join using current local setlists cache
+          let joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
+          
+          // 2. If not found locally, fetch remote data from Supabase first and try again
+          if (!joinedSetlist) {
+            try {
+              const { fetchRemoteDataFromSupabase } = await import('./lib/supabase');
+              const res = await fetchRemoteDataFromSupabase();
+              if (res.success && res.setlists) {
+                // Save the merged remote setlists into local storage
+                const mergedSetlists = [...res.setlists];
+                // Sync local changes to keep them merged
+                const localSetlists = StorageEngine.getSetlists();
+                localSetlists.forEach((localSt) => {
+                  const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
+                  if (remoteIdx >= 0) {
+                    if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
+                      mergedSetlists[remoteIdx] = localSt;
+                    }
+                  } else {
+                    mergedSetlists.push(localSt);
+                  }
+                });
+                StorageEngine.saveSetlists(mergedSetlists);
 
-      // Clean up URL parameters cleanly
-      if (window.location.search.includes('share')) {
-        const cleanUrl = window.location.origin + window.location.pathname + `?setlist=${pendingShareId}`;
-        window.history.replaceState({}, document.title, cleanUrl);
+                // Try joining again now that remote setlists have been merged/loaded
+                joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
+              }
+            } catch (err) {
+              console.error('[Pending Share Sync Error]', err);
+            }
+          }
+
+          if (joinedSetlist) {
+            setActiveTab('setlists');
+            setActiveSetlistId(pendingShareId);
+            showToast(`Setlist "${joinedSetlist.name}" aberto via link de compartilhamento (${pendingShareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
+          } else {
+            showToast('Setlist compartilhado não foi encontrado.', 'error');
+          }
+
+          localStorage.removeItem('pending_share_setlist');
+          localStorage.removeItem('pending_share_role');
+
+          // Clean up URL parameters cleanly (handles ?share or ?setlist with role)
+          const search = window.location.search;
+          if (search.includes('share') || (search.includes('setlist') && search.includes('role'))) {
+            const cleanUrl = window.location.origin + window.location.pathname + `?setlist=${pendingShareId}`;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        };
+
+        processShare();
+      } else {
+        localStorage.removeItem('pending_share_setlist');
+        localStorage.removeItem('pending_share_role');
       }
     }
   }, [isAuthenticated, setActiveTab, setActiveSetlistId, showToast]);

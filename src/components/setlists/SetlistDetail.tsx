@@ -597,12 +597,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
               <input
                 type="text"
                 readOnly
-                value={`${window.location.origin}${window.location.pathname}?setlist=${setlist.id}&role=${shareRole}`}
+                value={`${window.location.origin}${window.location.pathname}?share=${setlist.id}&role=${shareRole}`}
                 className="flex-1 bg-transparent text-xs text-zinc-800 dark:text-zinc-200 font-mono focus:outline-none select-all truncate"
               />
               <button
                 onClick={() => {
-                  const url = `${window.location.origin}${window.location.pathname}?setlist=${setlist.id}&role=${shareRole}`;
+                  const url = `${window.location.origin}${window.location.pathname}?share=${setlist.id}&role=${shareRole}`;
                   navigator.clipboard.writeText(url);
                   showToast(`Link do setlist copiado (${shareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
                 }}
@@ -618,7 +618,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const url = `${window.location.origin}${window.location.pathname}?setlist=${setlist.id}&role=${shareRole}`;
+                  const url = `${window.location.origin}${window.location.pathname}?share=${setlist.id}&role=${shareRole}`;
                   const perm = shareRole === 'edit' ? '(Modo Edição)' : '(Modo Visualização)';
                   const msg = `🎵 Confira o setlist "${setlist.name}" no Repertório Automático ${perm}:\n${url}`;
                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');

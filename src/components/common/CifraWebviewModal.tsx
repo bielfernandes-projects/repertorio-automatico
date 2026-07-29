@@ -127,7 +127,7 @@ export const CifraWebviewModal: React.FC = () => {
             title={`Cifra - ${songName}`}
             onError={() => setIframeError(true)}
             className="w-full h-full border-0 bg-white"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            sandbox="allow-scripts allow-popups allow-forms"
           />
         )}
       </div>

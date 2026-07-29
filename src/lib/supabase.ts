@@ -205,6 +205,7 @@ export async function syncLocalDataToSupabase(
   const userIdUUID = toUUID(user.id);
   const targetSongs = songs || StorageEngine.getCatalog();
   const targetSetlists = setlists || StorageEngine.getSetlistsForUser(user.email);
+  console.log('[Sync] Target setlists for sync:', JSON.stringify(targetSetlists));
 
   try {
     // Ensure the auth session is restored from local storage before making RLS queries

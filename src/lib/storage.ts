@@ -621,6 +621,7 @@ export class StorageEngine {
       setlist.members.push(member);
     }
 
+    console.log('[Storage] Final members list before saving:', JSON.stringify(setlist.members));
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
     notifySubscribers();
     console.log('[Storage] Member count now:', setlist.members.length);

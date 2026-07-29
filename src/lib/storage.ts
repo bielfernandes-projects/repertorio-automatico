@@ -594,14 +594,24 @@ export class StorageEngine {
   // Invitations
   static sendInvitation(setlistId: string, invitedEmail: string, role: 'edit' | 'view'): boolean {
     const user = this.getUser();
+    console.log('[Storage] sendInvitation: setlistId=' + setlistId + ', invitedEmail=' + invitedEmail + ', role=' + role + ', user=' + user.email);
+    
     const setlists = this.getSetlists();
+    console.log('[Storage] Found ' + setlists.length + ' setlists in localStorage');
+    
     const setlist = setlists.find((s) => s.id === setlistId);
-    if (!setlist) return false;
+    if (!setlist) {
+        console.error('[Storage] ERRO: Setlist não encontrado na lista local!', setlistId);
+        return false;
+    }
+
+    console.log('[Storage] Setlist encontrado! Nome:', setlist.name, 'Membros atuais:', setlist.members?.length);
 
     const email = invitedEmail.trim().toLowerCase();
-    if (email === user.email.toLowerCase()) return false; // Can't invite self
-
-    console.log('[Storage] sendInvitation: Setlist found? ', !!setlist, 'Inviting:', email);
+    if (email === user.email.toLowerCase()) {
+        console.error('[Storage] ERRO: Usuário tentando convidar a si mesmo');
+        return false; 
+    }
     
     // Check existing member
     let member = setlist.members.find((m) => m.email.toLowerCase() === email);

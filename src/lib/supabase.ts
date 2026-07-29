@@ -614,7 +614,7 @@ export async function syncLocalDataToSupabase(
               user_id: targetUserId,
               role: m.role === 'edit' ? 'editor' : 'viewer',
               email: m.email
-            }], { onConflict: 'id' });
+            }], { onConflict: 'setlist_id,user_id' });
 
             if (memErr) console.error('[Sync] Error upserting member:', memErr);
             else console.log('[Sync] Member upserted successfully:', m.email);
@@ -890,7 +890,7 @@ export async function selfJoinSetlistAsMember(
       user_id: userIdUUID,
       role: dbRole,
       email: user.email
-    }], { onConflict: 'id' });
+    }], { onConflict: 'setlist_id,user_id' });
 
     if (error) {
       console.error('[Share Link] Failed to self-join setlist_members:', error);

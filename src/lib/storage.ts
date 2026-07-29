@@ -624,10 +624,6 @@ export class StorageEngine {
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
     notifySubscribers();
     console.log('[Storage] Member count now:', setlist.members.length);
-    return true;
-  }
-
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
 
     // Store in invitations pool
     const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);

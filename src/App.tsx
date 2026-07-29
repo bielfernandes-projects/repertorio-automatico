@@ -216,16 +216,22 @@ export default function App() {
             // Fetch setlist name and user_id
             const { data: setlistData } = await client
               .from('setlists')
-              .select('name, owner_email')
+              .select('name, user_id')
               .eq('id', pendingShareId)
               .maybeSingle();
 
             if (setlistData) {
+              const { data: ownerProfile } = await client
+                .from('profiles')
+                .select('display_name')
+                .eq('id', setlistData.user_id)
+                .maybeSingle();
+
               setShareConfirmData({
                 id: pendingShareId,
                 role: pendingShareRole,
                 name: setlistData.name,
-                ownerEmail: setlistData.owner_email || 'Outro usuário'
+                ownerEmail: ownerProfile?.display_name || 'Outro usuário'
               });
             } else {
               showToast('Setlist compartilhado não foi encontrado no banco de dados.', 'error');

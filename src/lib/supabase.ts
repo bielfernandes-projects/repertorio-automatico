@@ -622,10 +622,6 @@ export async function syncLocalDataToSupabase(
           const memberUserUUID = toUUID(m.email);
           const memberUUID = toUUID(`${st.id}_${m.email}`);
 
-          await client.from('profiles').upsert([
-            { id: memberUserUUID, display_name: m.email }
-          ], { onConflict: 'id' });
-
           const { error: memErr } = await client.from('setlist_members').upsert([{
             id: memberUUID,
             setlist_id: setlistUUID,

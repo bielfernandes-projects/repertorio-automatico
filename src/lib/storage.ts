@@ -624,6 +624,11 @@ export class StorageEngine {
 
     console.log('[Storage] Final members list before saving:', JSON.stringify(setlist.members));
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
+    
+    // VERIFICAÇÃO IMEDIATA
+    const verify = localStorage.getItem(STORAGE_KEYS.SETLISTS);
+    console.log('[Storage] Verificacao localStorage apos salvar:', JSON.stringify(JSON.parse(verify || '[]').find((s: any) => s.id === setlistId)?.members));
+
     notifySubscribers();
     console.log('[Storage] Member count now:', setlist.members.length);
 

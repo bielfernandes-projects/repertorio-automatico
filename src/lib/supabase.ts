@@ -206,6 +206,7 @@ export async function syncLocalDataToSupabase(
   const targetSongs = songs || StorageEngine.getCatalog();
   const targetSetlists = setlists || StorageEngine.getSetlists(); // Removido filtro de usuário
   console.log('[Sync] Target setlists for sync:', JSON.stringify(targetSetlists));
+  console.log('[Sync] Raw localStorage string:', localStorage.getItem('repertorio_setlists_v2'));
 
   try {
     // Ensure the auth session is restored from local storage before making RLS queries

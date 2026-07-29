@@ -246,6 +246,15 @@ export default function App() {
             setActiveTab('setlists');
             setActiveSetlistId(pendingShareId);
             showToast(`Setlist "${joinedSetlist.name}" aberto via link de compartilhamento (${pendingShareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
+            
+            // FORÇAR SYNC DO NOVO MEMBRO IMEDIATAMENTE
+            try {
+              const { syncLocalDataToSupabase } = await import('./lib/supabase');
+              await syncLocalDataToSupabase(undefined, [joinedSetlist]);
+              console.log('[Share Link] Sync successful after join');
+            } catch (err) {
+              console.error('[Share Link] Sync failed after join:', err);
+            }
           } else {
             showToast('Setlist compartilhado não foi encontrado.', 'error');
           }

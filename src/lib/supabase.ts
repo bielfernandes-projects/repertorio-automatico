@@ -227,11 +227,17 @@ export async function syncLocalDataToSupabase(
       console.error('[Supabase Profile Upsert Error]', profileErr);
     }
 
-    // 1. Sync Songs (Force the current logged in user ID to avoid RLS mismatches)
-    if (targetSongs.length > 0) {
-      const dbSongs = targetSongs.map((s) => ({
+    // 1. Sync Songs — only sync songs that belong to the current logged-in user.
+    // Songs from shared setlists (owned by other users) must NOT be re-synced
+    // because doing so would violate the RLS policy (songs_insert_own / songs_update_own
+    // both require user_id = auth.uid()).
+    const ownSongs = targetSongs.filter(
+      (s) => !s.userId || toUUID(s.userId) === userIdUUID
+    );
+    if (ownSongs.length > 0) {
+      const dbSongs = ownSongs.map((s) => ({
         id: toUUID(s.id),
-        user_id: userIdUUID, // Always force logged-in user UUID
+        user_id: userIdUUID,
         name: s.name,
         artist: s.artist,
         original_key: s.originalKey || '',
@@ -492,10 +498,21 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
         });
 
       const isOwner = toUUID(stRow.user_id) === currentUserUUID;
+      // Resolve the owner's email: if the current user is the owner, use their email.
+      // Otherwise, look up the email in profileEmailMap using the user_id UUID.
+      // Fall back to the raw UUID string only if the email cannot be resolved.
+      let resolvedOwnerEmail: string;
+      if (isOwner) {
+        resolvedOwnerEmail = user.email;
+      } else {
+        const found = [...profileEmailMap.entries()].find(([, uid]) => uid === stRow.user_id);
+        resolvedOwnerEmail = found ? found[0] : (stRow.user_id || 'dono@repertorio.app');
+      }
+
       const setlist: Setlist = {
         id: stRow.id,
         ownerId: stRow.user_id,
-        ownerEmail: isOwner ? user.email : (stRow.user_id || 'dono@repertorio.app'),
+        ownerEmail: resolvedOwnerEmail,
         name: stRow.name,
         createdAt: stRow.created_at,
         updatedAt: stRow.updated_at || stRow.created_at,

@@ -627,10 +627,11 @@ export class StorageEngine {
     
     // VERIFICAÇÃO IMEDIATA
     const verify = localStorage.getItem(STORAGE_KEYS.SETLISTS);
-    console.log('[Storage] Verificacao localStorage apos salvar:', JSON.stringify(JSON.parse(verify || '[]').find((s: any) => s.id === setlistId)?.members));
+    const parsedVerify = JSON.parse(verify || '[]');
+    const setlistInStorage = parsedVerify.find((s: any) => s.id === setlistId);
+    console.log('[Storage] VERIFICACAO DE PERSISTENCIA APOS SALVAR:', JSON.stringify(setlistInStorage?.members));
 
     notifySubscribers();
-    console.log('[Storage] Member count now:', setlist.members.length);
 
     // Store in invitations pool
     const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);

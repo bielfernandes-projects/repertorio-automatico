@@ -512,3 +512,90 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
     return { success: false, message: e.message || 'Erro desconhecido.' };
   }
 }
+
+/**
+ * Registers a generic link-share invite in Supabase using the sentinel value
+ * '__link_share__' as the invitee_email. This allows ANY authenticated user
+ * who opens the share URL to read the setlist (RLS policy checks for this record).
+ * Must be called when the owner clicks "Copy" or "Send to WhatsApp".
+ */
+export async function enableSetlistLinkShare(setlistId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  const user = StorageEngine.getUser();
+  const userIdUUID = toUUID(user.id);
+  const setlistUUID = toUUID(setlistId);
+  const inviteId = toUUID(`link_share_${setlistId}`);
+
+  try {
+    await client.auth.getSession();
+    const { error } = await client.from('setlist_invites').upsert([{
+      id: inviteId,
+      setlist_id: setlistUUID,
+      inviter_id: userIdUUID,
+      invitee_email: '__link_share__',
+      status: 'pending'
+    }], { onConflict: 'id' });
+
+    if (error) {
+      console.error('[Share Link] Failed to enable link share in Supabase:', error);
+      return false;
+    }
+    console.log('[Share Link] Link share enabled in Supabase for setlist:', setlistId);
+    return true;
+  } catch (e: any) {
+    console.error('[Share Link] Exception enabling link share:', e);
+    return false;
+  }
+}
+
+/**
+ * Directly inserts the current authenticated user into setlist_members in Supabase.
+ * Called after the invitee successfully opens a share link and joins locally.
+ * This is needed because syncLocalDataToSupabase skips setlists the current
+ * user does not own, so membership would never be persisted otherwise.
+ */
+export async function selfJoinSetlistAsMember(
+  setlistId: string,
+  role: 'edit' | 'view'
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  const user = StorageEngine.getUser();
+  if (!user?.email) return false;
+
+  const userIdUUID = toUUID(user.id);
+  const setlistUUID = toUUID(setlistId);
+  const memberUUID = toUUID(`${setlistId}_${user.email}`);
+  const dbRole = role === 'edit' ? 'editor' : 'viewer';
+
+  try {
+    await client.auth.getSession();
+
+    // Ensure the user has a profile entry
+    await client.from('profiles').upsert([{
+      id: userIdUUID,
+      display_name: user.name || user.email
+    }], { onConflict: 'id' });
+
+    const { error } = await client.from('setlist_members').upsert([{
+      id: memberUUID,
+      setlist_id: setlistUUID,
+      user_id: userIdUUID,
+      role: dbRole,
+      email: user.email
+    }], { onConflict: 'id' });
+
+    if (error) {
+      console.error('[Share Link] Failed to self-join setlist_members:', error);
+      return false;
+    }
+    console.log('[Share Link] Self-join persisted to Supabase. Role:', dbRole);
+    return true;
+  } catch (e: any) {
+    console.error('[Share Link] Exception during self-join:', e);
+    return false;
+  }
+}

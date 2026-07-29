@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
+import { enableSetlistLinkShare } from '../../lib/supabase';
 import { syncLocalDataToSupabase } from '../../lib/supabase';
 import { Setlist, Block } from '../../types';
 import { getThemeColorStyle } from '../../lib/utils';
@@ -612,10 +613,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                 className="flex-1 bg-transparent text-xs text-zinc-800 dark:text-zinc-200 font-mono focus:outline-none select-all truncate"
               />
               <button
-                onClick={() => {
+                onClick={async () => {
                   const url = `${window.location.origin}${window.location.pathname}?share=${setlist.id}&role=${shareRole}`;
                   navigator.clipboard.writeText(url);
                   showToast(`Link do setlist copiado (${shareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
+                  // Register the link share in Supabase so the RLS policy allows the invitee to read the setlist
+                  await enableSetlistLinkShare(setlist.id);
                 }}
                 className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3 py-1.5 rounded-lg active:scale-95 transition-all shrink-0 cursor-pointer"
               >
@@ -628,10 +631,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             <div className="pt-1">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const url = `${window.location.origin}${window.location.pathname}?share=${setlist.id}&role=${shareRole}`;
                   const perm = shareRole === 'edit' ? '(Modo Edição)' : '(Modo Visualização)';
                   const msg = `🎵 Confira o setlist "${setlist.name}" no Repertório Automático ${perm}:\n${url}`;
+                  // Register the link share in Supabase so the RLS policy allows the invitee to read the setlist
+                  await enableSetlistLinkShare(setlist.id);
                   window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank');
                 }}
                 className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"

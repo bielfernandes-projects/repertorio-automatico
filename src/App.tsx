@@ -246,14 +246,16 @@ export default function App() {
             setActiveTab('setlists');
             setActiveSetlistId(pendingShareId);
             showToast(`Setlist "${joinedSetlist.name}" aberto via link de compartilhamento (${pendingShareRole === 'edit' ? 'Edição' : 'Visualização'})!`, 'success');
-            
-            // FORÇAR SYNC DO NOVO MEMBRO IMEDIATAMENTE
+
+            // Persist the membership directly to Supabase.
+            // NOTE: syncLocalDataToSupabase cannot be used here because it skips
+            // setlists where the current user is not the owner (isOwner guard).
+            // selfJoinSetlistAsMember inserts the member record directly.
             try {
-              const { syncLocalDataToSupabase } = await import('./lib/supabase');
-              await syncLocalDataToSupabase(undefined, [joinedSetlist]);
-              console.log('[Share Link] Sync successful after join');
+              const { selfJoinSetlistAsMember } = await import('./lib/supabase');
+              await selfJoinSetlistAsMember(pendingShareId, pendingShareRole);
             } catch (err) {
-              console.error('[Share Link] Sync failed after join:', err);
+              console.error('[Share Link] selfJoinSetlistAsMember failed:', err);
             }
           } else {
             showToast('Setlist compartilhado não foi encontrado.', 'error');

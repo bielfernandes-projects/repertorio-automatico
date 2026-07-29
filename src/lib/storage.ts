@@ -600,12 +600,16 @@ export class StorageEngine {
     const email = invitedEmail.trim().toLowerCase();
     if (email === user.email.toLowerCase()) return false; // Can't invite self
 
+    console.log('[Storage] sendInvitation: Setlist found? ', !!setlist, 'Inviting:', email);
+    
     // Check existing member
     let member = setlist.members.find((m) => m.email.toLowerCase() === email);
     if (member) {
+      console.log('[Storage] Member found, updating...');
       member.role = role;
       member.status = 'pending';
     } else {
+      console.log('[Storage] Member NOT found, adding...');
       member = {
         id: crypto.randomUUID(),
         setlistId,
@@ -616,6 +620,12 @@ export class StorageEngine {
       };
       setlist.members.push(member);
     }
+
+    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
+    notifySubscribers();
+    console.log('[Storage] Member count now:', setlist.members.length);
+    return true;
+  }
 
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
 

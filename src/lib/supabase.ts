@@ -184,7 +184,236 @@ create table if not exists public.setlist_invites (
   status text not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
   created_at timestamp with time zone default now() not null
 );
+
+-- ================================================================
+-- MIGRATION: Allow editors to write blocks/block_songs
+-- Run this in the Supabase SQL Editor to enable collaborative editing
+-- ================================================================
+-- Enable RLS on blocks and block_songs if not already enabled
+-- alter table public.blocks enable row level security;
+-- alter table public.block_songs enable row level security;
+
+-- Editors can insert new blocks in setlists they are members of
+-- create policy "editors_can_insert_blocks" on public.blocks
+--   for insert with check (
+--     exists (
+--       select 1 from public.setlist_members sm
+--       where sm.setlist_id = blocks.setlist_id
+--       and sm.user_id = auth.uid()
+--       and sm.role = 'editor'
+--     )
+--   );
+
+-- Editors can update blocks in setlists they are members of
+-- create policy "editors_can_update_blocks" on public.blocks
+--   for update using (
+--     exists (
+--       select 1 from public.setlist_members sm
+--       where sm.setlist_id = blocks.setlist_id
+--       and sm.user_id = auth.uid()
+--       and sm.role = 'editor'
+--     )
+--   );
+
+-- Editors can insert block_songs in setlists they are members of
+-- create policy "editors_can_insert_block_songs" on public.block_songs
+--   for insert with check (
+--     exists (
+--       select 1 from public.blocks b
+--       join public.setlist_members sm on sm.setlist_id = b.setlist_id
+--       where b.id = block_songs.block_id
+--       and sm.user_id = auth.uid()
+--       and sm.role = 'editor'
+--     )
+--   );
+
+-- Editors can update block_songs in setlists they are members of
+-- create policy "editors_can_update_block_songs" on public.block_songs
+--   for update using (
+--     exists (
+--       select 1 from public.blocks b
+--       join public.setlist_members sm on sm.setlist_id = b.setlist_id
+--       where b.id = block_songs.block_id
+--       and sm.user_id = auth.uid()
+--       and sm.role = 'editor'
+--     )
+--   );
 `;
+
+/**
+ * Syncs blocks and block_songs for a setlist where the current user is an editor member.
+ * Skips the setlist upsert (requires owner RLS) but writes block-level changes.
+ * Requires the "editors_can_insert/update_blocks/block_songs" RLS policies in Supabase.
+ */
+async function syncMemberEditsToSupabase(
+  client: SupabaseClient,
+  st: Setlist,
+  memberUserIdUUID: string
+): Promise<void> {
+  const setlistUUID = toUUID(st.id);
+
+  if (!st.blocks || st.blocks.length === 0) return;
+
+  for (let blockIdx = 0; blockIdx < st.blocks.length; blockIdx++) {
+    const b = st.blocks[blockIdx];
+    const blockUUID = toUUID(b.id);
+
+    const { error: blockErr } = await client.from('blocks').upsert([{
+      id: blockUUID,
+      setlist_id: setlistUUID,
+      name: b.name,
+      theme: b.theme || '',
+      position: b.position !== undefined ? b.position : blockIdx
+    }], { onConflict: 'id' });
+
+    if (blockErr) {
+      console.warn('[Sync Member] Could not upsert block (RLS policy may be missing):', blockErr.message);
+      continue;
+    }
+
+    if (b.items && b.items.length > 0) {
+      for (let itemIdx = 0; itemIdx < b.items.length; itemIdx++) {
+        const item = b.items[itemIdx];
+        const catalogSongId = item.catalogSongId || item.id;
+        const songUUID = toUUID(catalogSongId);
+        const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
+
+        // Ensure the song exists — use the member's user_id since the song is from their catalog
+        if (item.songName && item.songArtist) {
+          await client.from('songs').upsert([{
+            id: songUUID,
+            user_id: memberUserIdUUID,
+            name: item.songName,
+            artist: item.songArtist,
+            original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
+            slug: '',
+            cifra_url: null
+          }], { onConflict: 'id' });
+        }
+
+        const { error: bsErr } = await client.from('block_songs').upsert([{
+          id: blockSongUUID,
+          block_id: blockUUID,
+          song_id: songUUID,
+          position: item.position !== undefined ? item.position : itemIdx,
+          requested_key: item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || '',
+          notes: item.notes || null
+        }], { onConflict: 'id' });
+
+        if (bsErr) {
+          console.warn('[Sync Member] Could not upsert block_song (RLS policy may be missing):', bsErr.message);
+        }
+      }
+    }
+  }
+
+  console.log('[Sync Member] Editor edits synced for setlist:', st.id);
+}
+
+/**
+ * Fetches fresh member data from Supabase for a single setlist and merges it
+ * into localStorage. Called when the owner opens the share modal so they can
+ * see in real time who has joined via the share link.
+ */
+export async function fetchSetlistMembers(
+  setlistId: string
+): Promise<{ success: boolean; memberCount: number }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, memberCount: 0 };
+
+  try {
+    await client.auth.getSession();
+
+    const setlistUUID = toUUID(setlistId);
+
+    // Fetch all profiles for email resolution
+    const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
+    const profileEmailMap = new Map<string, string>();
+    (allProfilesData || []).forEach((p: any) => {
+      const email = (p.display_name || '').toLowerCase().trim();
+      if (email) profileEmailMap.set(email, p.id);
+    });
+
+    // Fetch members for this specific setlist
+    const { data: membersData, error: membersErr } = await client
+      .from('setlist_members')
+      .select('*')
+      .eq('setlist_id', setlistUUID);
+
+    if (membersErr) {
+      console.error('[fetchSetlistMembers] Error:', membersErr);
+      return { success: false, memberCount: 0 };
+    }
+
+    const user = StorageEngine.getUser();
+    const members: SetlistMember[] = (membersData || []).map((mRow: any) => {
+      const memberProfileId = mRow.user_id;
+      let memberEmail = mRow.email || 'membro@repertorio.app';
+
+      // Try to resolve email from profile map if not stored directly
+      if (!mRow.email) {
+        for (const [email, uid] of profileEmailMap.entries()) {
+          if (uid === memberProfileId) {
+            memberEmail = email;
+            break;
+          }
+        }
+      }
+
+      const isMemberCurrentUser = memberEmail.toLowerCase() === user.email.toLowerCase();
+      return {
+        id: mRow.id,
+        setlistId,
+        email: isMemberCurrentUser ? user.email : memberEmail,
+        role: mRow.role === 'editor' || mRow.role === 'owner' ? 'edit' : 'view',
+        status: 'accepted' as const,
+        invitedAt: mRow.created_at || new Date().toISOString()
+      };
+    });
+
+    // Merge into localStorage
+    const allSetlists = StorageEngine.getSetlists();
+    const setlistIdx = allSetlists.findIndex((s) => s.id === setlistId);
+    if (setlistIdx >= 0) {
+      // Merge: keep local-only members that aren't in remote, add remote ones
+      const existingEmails = new Set(allSetlists[setlistIdx].members.map((m) => m.email.toLowerCase()));
+      const remoteEmails = new Set(members.map((m) => m.email.toLowerCase()));
+
+      // Add remote members that aren't local
+      members.forEach((remoteMember) => {
+        if (!existingEmails.has(remoteMember.email.toLowerCase())) {
+          allSetlists[setlistIdx].members.push(remoteMember);
+        } else {
+          // Update existing member status/role from remote
+          const localIdx = allSetlists[setlistIdx].members.findIndex(
+            (m) => m.email.toLowerCase() === remoteMember.email.toLowerCase()
+          );
+          if (localIdx >= 0) {
+            allSetlists[setlistIdx].members[localIdx] = {
+              ...allSetlists[setlistIdx].members[localIdx],
+              role: remoteMember.role,
+              status: remoteMember.status
+            };
+          }
+        }
+      });
+
+      // Remove local pending members that accepted/rejected on remote
+      allSetlists[setlistIdx].members = allSetlists[setlistIdx].members.filter((localMember) => {
+        // Keep if no remote record (might be invite-only flow) or if remote has them
+        return remoteEmails.has(localMember.email.toLowerCase()) || localMember.status === 'pending';
+      });
+
+      StorageEngine.saveSetlists(allSetlists);
+    }
+
+    console.log('[fetchSetlistMembers] Fetched', members.length, 'members for setlist', setlistId);
+    return { success: true, memberCount: members.length };
+  } catch (e: any) {
+    console.error('[fetchSetlistMembers] Exception:', e);
+    return { success: false, memberCount: 0 };
+  }
+}
 
 // Sync Local Data to Supabase normalized schema
 export async function syncLocalDataToSupabase(
@@ -255,8 +484,16 @@ export async function syncLocalDataToSupabase(
       const setlistUUID = toUUID(st.id);
       const isOwner = !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase();
 
-      // Only sync setlist data if the current user is the owner
-      if (!isOwner) continue;
+      if (!isOwner) {
+        // If the current user is an editor member of this setlist, sync their block edits
+        const myMembership = st.members?.find(
+          (m) => m.email.toLowerCase() === user.email.toLowerCase()
+        );
+        if (myMembership?.role === 'edit') {
+          await syncMemberEditsToSupabase(client, st, userIdUUID);
+        }
+        continue;
+      }
 
       const { error: setlistErr } = await client.from('setlists').upsert([{
         id: setlistUUID,

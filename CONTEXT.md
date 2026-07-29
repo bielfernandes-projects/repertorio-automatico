@@ -375,3 +375,23 @@ create table if not exists public.setlist_invites (
 - **Botão "Instalar App no Celular"**: Agora abre um modal com instruções detalhadas para Android (Chrome), iPhone/iPad (Safari) e Computador, em vez de um toast curto com mensagem cortada.
 - Captura global do evento `beforeinstallprompt` antes do React montar para não perder o evento que dispara cedo.
 - Detecta `display-mode: standalone` para informar quando o app já está instalado.
+
+## Correções de Colaboração e Iframe (Julho 2026)
+
+### Dashboard e Separação de Setlists
+- Separação clara na lista de setlists (`SetlistsList.tsx`) entre "Meus Setlists" e "Compartilhados Comigo".
+- Setlists compartilhados agora exibem o nome do dono original e o nível de permissão (View/Edit), com a remoção de botões destrutivos (Duplicar/Excluir) nessas visualizações.
+
+### Sincronização de Membros On-Demand
+- Adicionada a função `fetchSetlistMembers` no `supabase.ts` para buscar membros ativos de um setlist específico em tempo real.
+- O owner agora visualiza, ao abrir o modal de compartilhamento, a lista atualizada de integrantes que acessaram via link, superando a limitação de exigir recarregamento do app para atualização.
+
+### Escrita Colaborativa (Editor Member Sync)
+- Implementada a função `syncMemberEditsToSupabase` no `supabase.ts` para permitir que usuários com permissão "Edit" salvem modificações na nuvem (adição de blocos, músicas e edição de tons/notas).
+- Modificado o guard principal de sincronização para, quando o usuário não for o owner, acionar a sincronia via block-level changes em vez de upsert no setlist principal (que continua restrito ao owner).
+- Elaboradas *Row Level Security (RLS) policies* específicas permitindo `insert/update` nas tabelas `blocks` e `block_songs` para usuários associados como "editor" no setlist.
+
+### Estabilidade do Iframe CifraClub
+- CifraClub frequentemente bloqueia iframes via `SameSite` / `X-Frame-Options`. 
+- Adicionado fallback visual padrão em `CifraWebviewModal.tsx` recomendando "Abrir no Navegador" via `window.open` para garantir acesso ao conteúdo.
+- O Iframe continua carregando em background; se conseguir (ex. com certas extensões), é renderizado e oculta o fallback, otimizando o fluxo sem quebrar a UI.

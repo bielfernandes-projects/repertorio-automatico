@@ -1,18 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { X, ExternalLink, RefreshCw, Edit3, Check, AlertCircle } from 'lucide-react';
+import { X, ExternalLink, Edit3, Check, AlertCircle, Music } from 'lucide-react';
 import { parseCifraClubUrl } from '../../lib/utils';
 
 export const CifraWebviewModal: React.FC = () => {
   const { cifraModal, closeCifraModal, showToast } = useAppStore();
   const [isEditingSlug, setIsEditingSlug] = useState(false);
   const [customSlug, setCustomSlug] = useState('');
-  const [iframeError, setIframeError] = useState(false);
+  // Start as null (unknown), will resolve to true/false after iframe attempt
+  const [iframeLoaded, setIframeLoaded] = useState<boolean | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!cifraModal?.isOpen) return;
+    // Reset state each time modal opens
+    setIframeLoaded(null);
+    setIsEditingSlug(false);
+
+    // Give the iframe 8s to load. If it errors or times out, show fallback.
+    loadTimeoutRef.current = setTimeout(() => {
+      setIframeLoaded((prev) => {
+        // Only trigger fallback if still unknown (never resolved to true)
+        if (prev === null) return false;
+        return prev;
+      });
+    }, 8000);
+
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, [cifraModal?.isOpen, cifraModal?.url]);
 
   if (!cifraModal || !cifraModal.isOpen) return null;
 
-  const { songName, artist, url, originalKey, requestedKey, songId, slugOverride } = cifraModal;
+  const { songName, artist, url, requestedKey, songId, slugOverride } = cifraModal;
 
   const handleSaveSlug = () => {
     if (songId) {
@@ -27,6 +50,22 @@ export const CifraWebviewModal: React.FC = () => {
   const openExternalBrowser = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
+
+  const handleIframeLoad = () => {
+    // Clear the timeout — iframe loaded successfully
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setIframeLoaded(true);
+  };
+
+  const handleIframeError = () => {
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setIframeLoaded(false);
+  };
+
+  // Show fallback when explicitly failed or still loading (null = show fallback optimistically)
+  // iframeLoaded === true → show iframe
+  // iframeLoaded === false or null → show fallback (null means we show fallback while trying in bg)
+  const showFallback = iframeLoaded !== true;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 dark:bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
@@ -102,34 +141,74 @@ export const CifraWebviewModal: React.FC = () => {
         <span className="truncate">{url}</span>
       </div>
 
-      {/* Webview iframe Container */}
+      {/* Main Content Area */}
       <div className="flex-1 relative bg-zinc-950">
-        {iframeError ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-3">
-              <AlertCircle className="w-6 h-6" />
+        {/* Fallback screen — shown by default while iframe tries to load, or after failure */}
+        {showFallback && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+            <div className="max-w-sm w-full space-y-5">
+              {/* Icon */}
+              <div className="flex items-center justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-purple-950/60 border border-purple-700/40 flex items-center justify-center">
+                  <Music className="w-8 h-8 text-purple-400" />
+                </div>
+              </div>
+
+              {/* Song info */}
+              <div>
+                <h3 className="text-base font-bold text-zinc-100 mb-1">{songName}</h3>
+                <p className="text-sm text-zinc-400">{artist}</p>
+                {requestedKey && (
+                  <span className="inline-block mt-2 text-xs font-bold text-purple-300 bg-purple-950/60 border border-purple-700/50 px-3 py-1 rounded-full">
+                    Tom: {requestedKey}
+                  </span>
+                )}
+              </div>
+
+              {/* Warning about embedding */}
+              <div className="bg-amber-950/30 border border-amber-700/30 rounded-xl p-3 flex items-start gap-2.5 text-left">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-200/80">
+                  O Cifra Club restringe a visualização incorporada. Abra no navegador para ver a cifra completa.
+                </p>
+              </div>
+
+              {/* Primary CTA */}
+              <button
+                onClick={openExternalBrowser}
+                className="w-full bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Abrir no Navegador</span>
+              </button>
+
+              {/* Secondary: adjust slug */}
+              <button
+                onClick={() => {
+                  setCustomSlug(slugOverride || '');
+                  setIsEditingSlug(true);
+                }}
+                className="w-full text-xs text-zinc-500 hover:text-purple-400 transition-colors py-1"
+              >
+                Link errado? Ajustar o slug da cifra
+              </button>
             </div>
-            <h3 className="text-sm font-bold text-zinc-200 mb-1">Cifra não pôde ser embutida diretamente</h3>
-            <p className="text-xs text-zinc-400 max-w-xs mb-4">
-              O site Cifra Club restringe a visualização em iFrames de alguns navegadores mobile.
-            </p>
-            <button
-              onClick={openExternalBrowser}
-              className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>Abrir Cifra no Navegador Externo</span>
-            </button>
           </div>
-        ) : (
-          <iframe
-            src={url}
-            title={`Cifra - ${songName}`}
-            onError={() => setIframeError(true)}
-            className="w-full h-full border-0 bg-white"
-            sandbox="allow-scripts allow-popups allow-forms"
-          />
         )}
+
+        {/* iframe — always rendered in background so it can attempt loading */}
+        {/* Hidden until it successfully loads (iframeLoaded === true) */}
+        <iframe
+          ref={iframeRef}
+          src={url}
+          title={`Cifra - ${songName}`}
+          onLoad={handleIframeLoad}
+          onError={handleIframeError}
+          className={`w-full h-full border-0 bg-white transition-opacity duration-300 ${
+            iframeLoaded === true ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          sandbox="allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation"
+        />
       </div>
     </div>
   );

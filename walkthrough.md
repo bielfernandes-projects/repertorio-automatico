@@ -80,3 +80,28 @@ Implementamos uma remediação completa e profunda de todas as vulnerabilidades 
 * **O que mudou:** A função de banco de dados `update_setlist_updated_at` ligada ao trigger de `block_songs` foi corrigida.
 * **Motivo:** O trigger antigo tentava ler `new.setlist_id` na tabela `block_songs` (onde essa coluna não existe), fazendo com que toda inserção de música em bloco falhasse com erro `500` (`record "new" has no field "setlist_id"`). A função agora busca dinamicamente o `setlist_id` através do `block_id` consultando a tabela `blocks`.
 * **Além disso:** A função `handle_new_user` do trigger de profiles foi ajustada para aceitar metadados de nome vindos tanto sob a chave `name` quanto `display_name`.
+
+---
+
+## 🛠️ Correções e Melhorias (Parte 3) — Colaboração e Cifra Club
+
+### 1. Dashboard: Seção "Compartilhados Comigo"
+* **Arquivo Modificado:** [SetlistsList.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/setlists/SetlistsList.tsx)
+* **O que mudou:** Separamos visualmente a lista de setlists em duas seções distintas: **"Meus Setlists"** (onde o usuário atual é o proprietário) e **"Compartilhados Comigo"** (onde ele é um membro convidado).
+* **Melhorias:** Os cards compartilhados agora indicam claramente quem é o proprietário (`de [Nome/E-mail]`), a permissão concedida (`Edição` ou `Visualização`), e as ações de deletar/duplicar foram restritas apenas aos setlists próprios. Para setlists de terceiros, uma ação de visualização/compartilhamento dedicada é exibida.
+
+### 2. Sincronização de Acessos de Integrantes (Bug de Visibilidade)
+* **Arquivos Modificados:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts), [SetlistDetail.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/setlists/SetlistDetail.tsx) e [ProfileView.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/profile/ProfileView.tsx)
+* **O que mudou:** Adicionamos a função `fetchSetlistMembers()` para ler em tempo real os integrantes atualizados do banco de dados do Supabase. Essa sincronização on-demand é disparada automaticamente quando o proprietário abre o modal de compartilhamento (seja no detalhe do setlist ou na aba Perfil).
+* **Melhorias:** O modal de compartilhamento do perfil agora também exibe a lista completa de integrantes ativos que já aceitaram e entraram no setlist, com a possibilidade de revogar os acessos diretamente por lá.
+
+### 3. Edição Colaborativa por Membros Convidados
+* **Arquivo Modificado:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts)
+* **O que mudou:** Adicionamos a função `syncMemberEditsToSupabase()` e ajustamos o guard `if (!isOwner) continue` na rotina de sincronização principal.
+* **Motivo:** Anteriormente, qualquer alteração feita por um membro editor era ignorada na sincronização automática em background porque o código pulava setlists que o usuário não possuía. Agora, o aplicativo detecta se o usuário é um membro editor e sincroniza as atualizações de blocos e músicas associadas de forma isolada, sem alterar o registro pai da tabela `setlists` (o que causaria erro de RLS).
+* **Requisitos:** Adicionamos no `SUPABASE_SQL_SCHEMA` as políticas RLS necessárias para permitir que usuários na tabela `setlist_members` com papel `editor` façam inserts e updates nas tabelas `blocks` e `block_songs`.
+
+### 4. Correção e Fallback do iframe do Cifra Club
+* **Arquivo Modificado:** [CifraWebviewModal.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/common/CifraWebviewModal.tsx)
+* **O que mudou:** Redesenhamos a experiência de visualização das cifras. Por padrão, o modal exibe uma tela de fallback limpa e bonita com as informações da música e um botão direto de "Abrir no Navegador". Em segundo plano, o iframe tenta carregar a cifra. Se o carregamento for bem-sucedido dentro de um limite de tempo, o fallback é substituído pelo iframe; caso contrário (o que acontece devido a restrições `SAMEORIGIN` e de Cookies/LocalStorage), o fallback amigável permanece visível.
+* **Segurança:** Adicionamos `allow-same-origin` à diretiva `sandbox` do iframe para eliminar as exceções de DOMException nos navegadores que tentam renderizar o site.

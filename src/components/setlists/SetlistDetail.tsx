@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { enableSetlistLinkShare } from '../../lib/supabase';
-import { syncLocalDataToSupabase } from '../../lib/supabase';
+import { syncLocalDataToSupabase, fetchSetlistMembers } from '../../lib/supabase';
 import { Setlist, Block } from '../../types';
 import { getThemeColorStyle } from '../../lib/utils';
 import { Modal } from '../common/Modal';
@@ -74,6 +74,27 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   // Invite state
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'edit' | 'view'>('edit');
+
+  // Loading state for member fetch
+  const [isFetchingMembers, setIsFetchingMembers] = useState(false);
+
+  // When share modal opens, fetch fresh member data from Supabase so owner
+  // can see who has joined in real time (no Realtime subscription needed)
+  useEffect(() => {
+    const ownerCheck = setlist?.ownerEmail?.toLowerCase() === currentUser.email?.toLowerCase();
+    if (!isInviteModalOpen || !ownerCheck) return;
+    const cfg = StorageEngine.getSupabaseConfig();
+    if (!cfg.isConnected) return;
+
+    setIsFetchingMembers(true);
+    fetchSetlistMembers(setlistId)
+      .then(() => {
+        // Storage subscription will re-render the setlist state automatically
+      })
+      .catch((err) => console.error('[SetlistDetail] fetchSetlistMembers error:', err))
+      .finally(() => setIsFetchingMembers(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInviteModalOpen]);
 
   if (!setlist) {
     return (
@@ -646,11 +667,16 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
             </div>
           </div>
 
-          {/* Members List */}
+            {/* Members List */}
           <div className="space-y-2">
-            <h4 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
-              Acessos do Setlist ({setlist.members.length + 1})
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
+                Acessos do Setlist ({setlist.members.length + 1})
+              </h4>
+              {isFetchingMembers && (
+                <span className="text-[10px] text-purple-400 animate-pulse">Atualizando...</span>
+              )}
+            </div>
 
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {/* Owner */}

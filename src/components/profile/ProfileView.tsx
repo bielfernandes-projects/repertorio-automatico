@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { syncLocalDataToSupabase, getSupabaseClient } from '../../lib/supabase';
-import { Setlist } from '../../types';
+import { syncLocalDataToSupabase, getSupabaseClient, fetchSetlistMembers } from '../../lib/supabase';
+import { Setlist, SetlistMember } from '../../types';
 import { Modal } from '../common/Modal';
 
 // Capture beforeinstallprompt globally before React mounts
@@ -35,7 +35,8 @@ import {
   X,
   Camera,
   Smartphone,
-  Monitor
+  Monitor,
+  Shield
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -43,7 +44,7 @@ interface ProfileViewProps {
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
-  const { isDarkMode, toggleDarkMode, showToast } = useAppStore();
+  const { isDarkMode, toggleDarkMode, showToast, showCascadeWarning } = useAppStore();
   const user = StorageEngine.getUser();
 
   // Edit Name state
@@ -165,6 +166,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [selectedSetlistId, setSelectedSetlistId] = useState('');
   const [setlistRoles, setSetlistRoles] = useState<Record<string, 'edit' | 'view'>>({});
+  const [isFetchingMembers, setIsFetchingMembers] = useState(false);
+
+  // Fetch setlist members when share modal opens or setlist selection changes
+  useEffect(() => {
+    if (!isShareModalOpen || !selectedSetlistId) return;
+    const cfg = StorageEngine.getSupabaseConfig();
+    if (!cfg.isConnected) return;
+
+    setIsFetchingMembers(true);
+    fetchSetlistMembers(selectedSetlistId)
+      .catch((err) => console.error('[ProfileView] fetchSetlistMembers error:', err))
+      .finally(() => setIsFetchingMembers(false));
+  }, [isShareModalOpen, selectedSetlistId]);
 
   const getRoleForSetlist = (id: string) => setlistRoles[id] || 'edit';
 
@@ -233,8 +247,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
       showToast('Você precisa criar um setlist antes de compartilhar.', 'info');
       return;
     }
-    setSelectedSetlistId(setlistId || owned[0].id);
+    const targetId = setlistId || owned[0].id;
+    setSelectedSetlistId(targetId);
     setIsShareModalOpen(true);
+  };
+
+  const handleRevoke = (email: string) => {
+    if (!selectedSetlistId) return;
+    showCascadeWarning({
+      title: `Revogar acesso de ${email}?`,
+      description: 'O usuário perderá o acesso para visualizar ou editar este setlist.',
+      affectedBlocksCount: 0,
+      affectedSetlistsCount: 0,
+      onConfirm: async () => {
+        StorageEngine.revokeInvitation(selectedSetlistId, email);
+        if (StorageEngine.getSupabaseConfig().isConnected) {
+          await syncLocalDataToSupabase(undefined, StorageEngine.getSetlists());
+        }
+        showToast('Convite revogado.', 'info');
+      }
+    });
   };
 
   const handleCopyLink = (stId: string) => {
@@ -605,6 +637,59 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
               </div>
             </div>
           )}
+
+          {/* Members List with Accesses */}
+          {selectedSetlistId && (() => {
+            const activeShareSetlist = userSetlists.find((s) => s.id === selectedSetlistId);
+            if (!activeShareSetlist) return null;
+            return (
+              <div className="space-y-2 mt-4 pt-4 border-t border-zinc-100 dark:border-purple-900/30">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
+                    Acessos do Setlist ({activeShareSetlist.members.length + 1})
+                  </h4>
+                  {isFetchingMembers && (
+                    <span className="text-[10px] text-purple-400 animate-pulse">Atualizando...</span>
+                  )}
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {/* Owner */}
+                  <div className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-bold text-zinc-900 dark:text-zinc-100 block">
+                        {activeShareSetlist.ownerDisplayName || activeShareSetlist.ownerEmail}
+                      </span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-1 font-semibold">
+                        <Shield className="w-3 h-3" />
+                        Dono do Setlist
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Members who joined via link */}
+                  {activeShareSetlist.members.map((m) => (
+                    <div key={m.id} className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{m.email}</span>
+                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                          Entrou via Link • <strong className="text-emerald-600 dark:text-emerald-400">Acesso Concedido</strong>
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleRevoke(m.email)}
+                        className="p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                        title="Revogar Acesso"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Modal>
 

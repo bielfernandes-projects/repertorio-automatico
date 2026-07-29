@@ -1,107 +1,183 @@
-# Walkthrough — Remediação de Segurança e Blindagem
+# Correções de RLS e Colaboração no Supabase (Ajuste Final)
 
-Implementamos uma remediação completa e profunda de todas as vulnerabilidades críticas e altas identificadas na auditoria de segurança. O sistema agora está pronto para produção e seguro para dados reais de usuários.
+Identificamos por que os recursos de colaboração (Bugs 1, 2 e 3) não estavam refletindo e lançavam erros 403 no console.
 
----
-
-## 🛠️ Alterações Realizadas
-
-### 1. Autenticação Segura com Supabase Auth Real
-* **Arquivo Modificado:** [AuthModal.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/auth/AuthModal.tsx)
-* **O que mudou:** O login simulado/falso foi completamente removido. O modal agora faz chamadas reais a `client.auth.signUp`, `client.auth.signInWithPassword` e `client.auth.resetPasswordForEmail`.
-* **Segurança:** As senhas são enviadas e verificadas diretamente pelo Supabase. O formulário não vem mais pré-preenchido com credenciais padrão.
-
-### 2. Remoção de Credenciais Hardcodadas
-* **Arquivo Modificado:** [storage.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/storage.ts)
-* **O que mudou:** O objeto `DEFAULT_USER` que expunha o e-mail real do desenvolvedor foi removido. Foi criado um `ANONYMOUS_USER` sem credenciais como fallback.
-* **Segurança:** O e-mail do usuário não está mais exposto no repositório do GitHub.
-
-### 3. Sanitização Defensiva e Validação de Uploads
-* **Arquivo Criado:** [sanitize.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/sanitize.ts)
-* **Arquivo Modificado:** [CatalogView.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/catalog/CatalogView.tsx)
-* **O que mudou:** Criado helper de sanitização de strings para evitar controle de caracteres maliciosos e limite de comprimento nos campos do catálogo.
-* **Segurança:** Implementada validação dupla de arquivos de upload no catálogo (extensão do arquivo + MIME type do arquivo), permitindo exclusivamente PDFs e Imagens normais, mitigando riscos de upload de scripts maliciosos.
-
-### 4. Hardening de Identificadores (UUIDs)
-* **Arquivo Modificado:** [storage.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/storage.ts)
-* **O que mudou:** Substituição de todos os geradores de IDs fracos (`Date.now() + Math.random()`) por UUIDs criptograficamente seguros gerados por `crypto.randomUUID()`.
-* **Segurança:** Impede ataques de enumeração de recursos (IDOR).
-
-### 5. Configuração de Cabeçalhos de Segurança (CSP)
-* **Arquivo Criado:** [vercel.json](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/vercel.json)
-* **O que mudou:** Adicionado cabeçalhos de segurança recomendados para a Vercel, incluindo uma Content Security Policy (CSP) restritiva, `X-Content-Type-Options: nosniff`, e `X-Frame-Options: DENY`.
-
-### 6. Sincronização e Mapeamento de Membros
-* **Arquivo Modificado:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts)
-* **O que mudou:** Os placeholders de e-mail estáticos (`membro@repertorio.app` e `dono@repertorio.app`) foram substituídos pelos IDs correspondentes retornados pelo banco de dados. Os logs de console de erro foram envolvidos para rodar apenas em ambiente de desenvolvimento (`import.meta.env.DEV`).
-
-### 7. Validação de Papel do Link de Compartilhamento
-* **Arquivo Modificado:** [App.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/App.tsx)
-* **O que mudou:** O valor de `role` da URL de compartilhamento agora passa por uma checagem rigorosa de correspondência exata para `'view'` antes de definir a permissão, evitando injeções de permissões não permitidas.
-
-### 8. Arquivos Planos Ignorados
-* **Arquivo Modificado:** [.gitignore](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/.gitignore)
-* **O que mudou:** Adicionados `premium-plan.md` and `security-audit.md` para evitar que segredos e modelagens internas subam para o GitHub.
+### Análise dos Erros 403 Encontrados:
+1. **`setlist_members` (403 Forbidden)**: Ao entrar pelo link, o convidado (Destino) executa `selfJoinSetlistAsMember` para se registrar. Porém, a política antiga no banco só permitia que o **dono** (Owner) fizesse alterações nesta tabela, gerando erro 403 ao convidado tentar se auto-inserir.
+2. **`songs` (403 Forbidden)**: Sincronizações da nuvem tentavam fazer `upsert` em lote de todas as músicas dos blocos (inclusive as do Dono). O Supabase barrou essas escritas porque a política RLS padrão de `songs` só permite edições pelo proprietário da música.
 
 ---
 
-## 🧪 Verificação e Validação
-
-### Testes de Compilação
-* Executado `npx tsc --noEmit` com **sucesso** (0 erros encontrados).
-
-### Teste de Segurança Local
-* Verificado que o `.gitignore` está ignorando os planos e relatórios de auditoria criados anteriormente.
+### Soluções Implementadas no Código:
+* **Filtro de Propriedade de Músicas (`isMySong`)**: Atualizamos `syncLocalDataToSupabase` e `syncMemberEditsToSupabase` para buscar a música correspondente na coleção local antes do envio. Agora, o aplicativo **só faz upsert de músicas que pertencem ao usuário logado**. Músicas de terceiros nos setlists compartilhados são preservadas sem acionar escritas redundantes, eliminando os erros 403.
 
 ---
 
-## 🛠️ Correções e Melhorias (Parte 2)
+### 🛠️ Nova Migration SQL para o Supabase SQL Editor
+Para corrigir as permissões de leitura/escrita dos membros no banco, você precisa rodar este novo script SQL no **SQL Editor** do seu Supabase Dashboard. Ele substitui as políticas antigas e libera os acessos de forma segura:
 
-### 1. Correção de Sincronização e Race Condition com Supabase
-* **Arquivo Modificado:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts)
-* **O que mudou:** Foi adicionada uma chamada `await client.auth.getSession()` antes da execução das `queries` em `fetchRemoteDataFromSupabase` e `syncLocalDataToSupabase`.
-* **Motivo:** O Supabase JS restaura a sessão assincronamente a partir do `localStorage`. Sem essa espera, a primeira tentativa de leitura de dados logo ao abrir o app era feita como `usuário anônimo`, ativando a RLS (Row Level Security) que impedia de trazer os dados reais, falhando silenciosamente a sincronização e impedindo que os 17 itens injetados manualmente aparecessem no frontend.
+```sql
+-- ================================================================
+-- MIGRATION: Corrigir RLS para Colaboração (Membros, Convites e Músicas)
+-- Execute no SQL Editor do Supabase para corrigir os erros 403
+-- ================================================================
 
-### 2. Bloqueio de Preenchimento Automático de Senha (Nova Senha)
-* **Arquivo Modificado:** [ProfileView.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/profile/ProfileView.tsx)
-* **O que mudou:** Adicionamos atributos `id` e `name` aos campos de "Nova Senha" e "Confirmar Nova Senha".
-* **Motivo:** Navegadores e Gerenciadores de Senha preenchem os campos automaticamente com a senha antiga quando eles encontram inputs `type="password"`. Essa adição mitiga o problema.
+-- --- 1. AJUSTE DE RLS PARA MÚSICAS (songs) ---
+drop policy if exists "Users can view own songs" on public.songs;
 
-### 3. Forçamento de ID do Usuário Logado na Sincronização
-* **Arquivo Modificado:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts)
-* **O que mudou:** A sincronização local para a nuvem agora força o UUID do usuário logado atual (`userIdUUID`) em todas as músicas e setlists sincronizados do cache local.
-* **Motivo:** Evita que registros antigos do localStorage (com IDs de teste antigos ou vazios) disparem erros de segurança ou fiquem órfãos ao serem enviados ao Supabase.
+-- Permitir leitura da música se for sua OU se ela fizer parte de um setlist que você é membro
+create policy "Users can view own songs or songs in shared setlists"
+  on public.songs for select
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.block_songs bs
+      join public.blocks b on b.id = bs.block_id
+      join public.setlists s on s.id = b.setlist_id
+      join public.setlist_members sm on sm.setlist_id = s.id
+      where bs.song_id = songs.id
+      and sm.user_id = auth.uid()
+    )
+  );
 
-### 4. Remoção de Recursão de RLS e Desativação do RLS
-* **O que mudou:** Foi identificada uma recursão infinita no Postgres entre as regras das tabelas `setlists` e `setlist_members`. Após simplificarmos as políticas, o usuário optou por desativar temporariamente o RLS em todas as tabelas públicas (`DISABLE ROW LEVEL SECURITY`) para fins de teste livre.
-* **Motivo:** Garantir a liberação total da conexão frontend-banco de dados sem bloqueios ou loops de validação do planejador de consultas do Postgres.
+-- --- 2. AJUSTE DE RLS PARA MEMBROS (setlist_members) ---
+drop policy if exists "Members can view setlist members" on public.setlist_members;
+drop policy if exists "Owners can manage setlist members" on public.setlist_members;
 
-### 5. Correção de Gatilho (Trigger) de Inserção de Música no Bloco
-* **O que mudou:** A função de banco de dados `update_setlist_updated_at` ligada ao trigger de `block_songs` foi corrigida.
-* **Motivo:** O trigger antigo tentava ler `new.setlist_id` na tabela `block_songs` (onde essa coluna não existe), fazendo com que toda inserção de música em bloco falhasse com erro `500` (`record "new" has no field "setlist_id"`). A função agora busca dinamicamente o `setlist_id` através do `block_id` consultando a tabela `blocks`.
-* **Além disso:** A função `handle_new_user` do trigger de profiles foi ajustada para aceitar metadados de nome vindos tanto sob a chave `name` quanto `display_name`.
+-- A. Permitir leitura se você for membro ou se o link-share estiver ativo
+create policy "Members can view setlist members"
+  on public.setlist_members for select
+  using (
+    exists (
+      select 1 from public.setlist_members sm
+      where sm.setlist_id = setlist_members.setlist_id
+      and sm.user_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.setlist_invites
+      where setlist_id = setlist_members.setlist_id
+      and invitee_email = '__link_share__'
+    )
+  );
 
----
+-- B. Permitir inserção de membros (Dono convidando OU convidado entrando via link/email)
+create policy "Anyone can insert setlist members if owner or invited"
+  on public.setlist_members for insert
+  with check (
+    exists (
+      select 1 from public.setlists s
+      where s.id = setlist_members.setlist_id
+      and s.user_id = auth.uid()
+    )
+    or (
+      auth.uid() = user_id
+      and (
+        exists (
+          select 1 from public.setlist_invites i
+          where i.setlist_id = setlist_members.setlist_id
+          and i.invitee_email = '__link_share__'
+        )
+        or exists (
+          select 1 from public.setlist_invites i
+          where i.setlist_id = setlist_members.setlist_id
+          and lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
+        )
+      )
+    )
+  );
 
-## 🛠️ Correções e Melhorias (Parte 3) — Colaboração e Cifra Club
+-- C. Permitir atualizar/deletar se for o Dono do setlist OU se o membro estiver se removendo
+create policy "Owners can update/delete members, or members can leave"
+  on public.setlist_members for all
+  using (
+    exists (
+      select 1 from public.setlists s
+      where s.id = setlist_members.setlist_id
+      and s.user_id = auth.uid()
+    )
+    or auth.uid() = user_id
+  );
 
-### 1. Dashboard: Seção "Compartilhados Comigo"
-* **Arquivo Modificado:** [SetlistsList.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/setlists/SetlistsList.tsx)
-* **O que mudou:** Separamos visualmente a lista de setlists em duas seções distintas: **"Meus Setlists"** (onde o usuário atual é o proprietário) e **"Compartilhados Comigo"** (onde ele é um membro convidado).
-* **Melhorias:** Os cards compartilhados agora indicam claramente quem é o proprietário (`de [Nome/E-mail]`), a permissão concedida (`Edição` ou `Visualização`), e as ações de deletar/duplicar foram restritas apenas aos setlists próprios. Para setlists de terceiros, uma ação de visualização/compartilhamento dedicada é exibida.
+-- --- 3. AJUSTE DE RLS PARA CONVITES (setlist_invites) ---
+drop policy if exists "Inviters can view own invites" on public.setlist_invites;
 
-### 2. Sincronização de Acessos de Integrantes (Bug de Visibilidade)
-* **Arquivos Modificados:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts), [SetlistDetail.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/setlists/SetlistDetail.tsx) e [ProfileView.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/profile/ProfileView.tsx)
-* **O que mudou:** Adicionamos a função `fetchSetlistMembers()` para ler em tempo real os integrantes atualizados do banco de dados do Supabase. Essa sincronização on-demand é disparada automaticamente quando o proprietário abre o modal de compartilhamento (seja no detalhe do setlist ou na aba Perfil).
-* **Melhorias:** O modal de compartilhamento do perfil agora também exibe a lista completa de integrantes ativos que já aceitaram e entraram no setlist, com a possibilidade de revogar os acessos diretamente por lá.
+-- Permitir ver convite se você o criou, se é o dono do setlist ou se você é o convidado (por email ou link_share)
+create policy "Anyone can view invites they are involved in"
+  on public.setlist_invites for select
+  using (
+    inviter_id = auth.uid()
+    or invitee_email = '__link_share__'
+    or lower(invitee_email) = lower(auth.jwt() ->> 'email')
+    or exists (
+      select 1 from public.setlist_members sm
+      where sm.setlist_id = setlist_invites.setlist_id
+      and sm.user_id = auth.uid()
+      and sm.role = 'owner'
+    )
+  );
 
-### 3. Edição Colaborativa por Membros Convidados
-* **Arquivo Modificado:** [supabase.ts](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/lib/supabase.ts)
-* **O que mudou:** Adicionamos a função `syncMemberEditsToSupabase()` e ajustamos o guard `if (!isOwner) continue` na rotina de sincronização principal.
-* **Motivo:** Anteriormente, qualquer alteração feita por um membro editor era ignorada na sincronização automática em background porque o código pulava setlists que o usuário não possuía. Agora, o aplicativo detecta se o usuário é um membro editor e sincroniza as atualizações de blocos e músicas associadas de forma isolada, sem alterar o registro pai da tabela `setlists` (o que causaria erro de RLS).
-* **Requisitos:** Adicionamos no `SUPABASE_SQL_SCHEMA` as políticas RLS necessárias para permitir que usuários na tabela `setlist_members` com papel `editor` façam inserts e updates nas tabelas `blocks` e `block_songs`.
+-- --- 4. AJUSTE DE RLS PARA VISUALIZAR SETLISTS/BLOCOS (setlists, blocks, block_songs) ---
+drop policy if exists "Users can view own setlists" on public.setlists;
+drop policy if exists "Members can view blocks" on public.blocks;
+drop policy if exists "Members can view block songs" on public.block_songs;
 
-### 4. Correção e Fallback do iframe do Cifra Club
-* **Arquivo Modificado:** [CifraWebviewModal.tsx](file:///c:/Users/Gabriel%20Fernandes/OneDrive%20-%20LEMA/Desktop/Pessoal/repertorio-automatico-novo/src/components/common/CifraWebviewModal.tsx)
-* **O que mudou:** Redesenhamos a experiência de visualização das cifras. Por padrão, o modal exibe uma tela de fallback limpa e bonita com as informações da música e um botão direto de "Abrir no Navegador". Em segundo plano, o iframe tenta carregar a cifra. Se o carregamento for bem-sucedido dentro de um limite de tempo, o fallback é substituído pelo iframe; caso contrário (o que acontece devido a restrições `SAMEORIGIN` e de Cookies/LocalStorage), o fallback amigável permanece visível.
-* **Segurança:** Adicionamos `allow-same-origin` à diretiva `sandbox` do iframe para eliminar as exceções de DOMException nos navegadores que tentam renderizar o site.
+-- Permitir ver setlist se for dono, se for membro ou se tiver link ativo/convite
+create policy "Users can view own setlists or shared/invited setlists"
+  on public.setlists for select
+  using (
+    auth.uid() = user_id
+    or exists (
+      select 1 from public.setlist_members sm
+      where sm.setlist_id = setlists.id
+      and sm.user_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.setlist_invites i
+      where i.setlist_id = setlists.id
+      and (
+        i.invitee_email = '__link_share__'
+        or lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
+      )
+    )
+  );
+
+-- Permitir ver blocos se for membro ou convidado por link/email
+create policy "Members or invited guests can view blocks"
+  on public.blocks for select
+  using (
+    exists (
+      select 1 from public.setlist_members sm
+      where sm.setlist_id = blocks.setlist_id
+      and sm.user_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.setlist_invites i
+      where i.setlist_id = blocks.setlist_id
+      and (
+        i.invitee_email = '__link_share__'
+        or lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
+      )
+    )
+  );
+
+-- Permitir ver músicas dos blocos se for membro ou convidado por link/email
+create policy "Members or invited guests can view block songs"
+  on public.block_songs for select
+  using (
+    exists (
+      select 1 from public.blocks b
+      join public.setlist_members sm on sm.setlist_id = b.setlist_id
+      where b.id = block_songs.block_id
+      and sm.user_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.blocks b
+      join public.setlist_invites i on i.setlist_id = b.setlist_id
+      where b.id = block_songs.block_id
+      and (
+        i.invitee_email = '__link_share__'
+        or lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
+      )
+    )
+  );
+```,Description:

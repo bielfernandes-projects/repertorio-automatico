@@ -186,56 +186,104 @@ create table if not exists public.setlist_invites (
 );
 
 -- ================================================================
--- MIGRATION: Allow editors to write blocks/block_songs
--- Run this in the Supabase SQL Editor to enable collaborative editing
+-- MIGRATION: Corrigir RLS para Colaboração (Membros e Músicas)
+-- Execute no SQL Editor do Supabase para corrigir os erros 403
 -- ================================================================
--- Enable RLS on blocks and block_songs if not already enabled
--- alter table public.blocks enable row level security;
--- alter table public.block_songs enable row level security;
 
--- Editors can insert new blocks in setlists they are members of
--- create policy "editors_can_insert_blocks" on public.blocks
---   for insert with check (
+-- 1. AJUSTE DE RLS PARA MÚSICAS (songs)
+-- Remove a política antiga que restringia a leitura apenas ao dono da música
+-- drop policy if exists "Users can view own songs" on public.songs;
+
+-- Nova política: O dono pode ver suas músicas E membros de setlists compartilhados podem ver as músicas contidas neles
+-- create policy "Users can view own songs or songs in shared setlists"
+--   on public.songs for select
+--   using (
+--     auth.uid() = user_id
+--     or exists (
+--       select 1 from public.block_songs bs
+--       join public.blocks b on b.id = bs.block_id
+--       join public.setlists s on s.id = b.setlist_id
+--       join public.setlist_members sm on sm.setlist_id = s.id
+--       where bs.song_id = songs.id
+--       and sm.user_id = auth.uid()
+--     )
+--   );
+
+-- 2. AJUSTE DE RLS PARA MEMBROS (setlist_members)
+-- Remove as políticas antigas
+-- drop policy if exists "Members can view setlist members" on public.setlist_members;
+-- drop policy if exists "Owners can manage setlist members" on public.setlist_members;
+
+-- A. Permitir leitura dos membros para quem já é membro ou possui acesso por link ativo
+-- create policy "Members can view setlist members"
+--   on public.setlist_members for select
+--   using (
 --     exists (
 --       select 1 from public.setlist_members sm
---       where sm.setlist_id = blocks.setlist_id
+--       where sm.setlist_id = setlist_members.setlist_id
 --       and sm.user_id = auth.uid()
---       and sm.role = 'editor'
+--     )
+--     or exists (
+--       select 1 from public.setlist_invites
+--       where setlist_id = setlist_members.setlist_id
+--       and invitee_email = '__link_share__'
 --     )
 --   );
 
--- Editors can update blocks in setlists they are members of
--- create policy "editors_can_update_blocks" on public.blocks
---   for update using (
+-- B. Permitir inserção de membros (Dono convidando OU convidado entrando via link/email)
+-- create policy "Anyone can insert setlist members if owner or invited"
+--   on public.setlist_members for insert
+--   with check (
 --     exists (
+--       select 1 from public.setlists s
+--       where s.id = setlist_members.setlist_id
+--       and s.user_id = auth.uid()
+--     )
+--     or (
+--       auth.uid() = user_id
+--       and (
+--         exists (
+--           select 1 from public.setlist_invites i
+--           where i.setlist_id = setlist_members.setlist_id
+--           and i.invitee_email = '__link_share__'
+--         )
+--         or exists (
+--           select 1 from public.setlist_invites i
+--           where i.setlist_id = setlist_members.setlist_id
+--           and lower(i.invitee_email) = lower(auth.jwt() ->> 'email')
+--         )
+--       )
+--     )
+--   );
+
+-- C. Permitir atualização/deleção pelo Dono OU pelo próprio membro saindo do setlist
+-- create policy "Owners can update/delete members, or members can leave"
+--   on public.setlist_members for all
+--   using (
+--     exists (
+--       select 1 from public.setlists s
+--       where s.id = setlist_members.setlist_id
+--       and s.user_id = auth.uid()
+--     )
+--     or auth.uid() = user_id
+--   );
+
+-- 3. AJUSTE DE RLS PARA INVITES (setlist_invites)
+-- Remove política antiga
+-- drop policy if exists "Inviters can view own invites" on public.setlist_invites;
+
+-- Nova política: Permitir visualização de convites vinculados ao usuário
+-- create policy "Anyone can view invites they are involved in"
+--   on public.setlist_invites for select
+--   using (
+--     inviter_id = auth.uid()
+--     or invitee_email = '__link_share__'
+--     or lower(invitee_email) = lower(auth.jwt() ->> 'email')
+--     or exists (
 --       select 1 from public.setlist_members sm
---       where sm.setlist_id = blocks.setlist_id
+--       where sm.setlist_id = setlist_invites.setlist_id
 --       and sm.user_id = auth.uid()
---       and sm.role = 'editor'
---     )
---   );
-
--- Editors can insert block_songs in setlists they are members of
--- create policy "editors_can_insert_block_songs" on public.block_songs
---   for insert with check (
---     exists (
---       select 1 from public.blocks b
---       join public.setlist_members sm on sm.setlist_id = b.setlist_id
---       where b.id = block_songs.block_id
---       and sm.user_id = auth.uid()
---       and sm.role = 'editor'
---     )
---   );
-
--- Editors can update block_songs in setlists they are members of
--- create policy "editors_can_update_block_songs" on public.block_songs
---   for update using (
---     exists (
---       select 1 from public.blocks b
---       join public.setlist_members sm on sm.setlist_id = b.setlist_id
---       where b.id = block_songs.block_id
---       and sm.user_id = auth.uid()
---       and sm.role = 'editor'
+--       and sm.role = 'owner'
 --     )
 --   );
 `;
@@ -280,15 +328,21 @@ async function syncMemberEditsToSupabase(
 
         // Ensure the song exists — use the member's user_id since the song is from their catalog
         if (item.songName && item.songArtist) {
-          await client.from('songs').upsert([{
-            id: songUUID,
-            user_id: memberUserIdUUID,
-            name: item.songName,
-            artist: item.songArtist,
-            original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
-            slug: '',
-            cifra_url: null
-          }], { onConflict: 'id' });
+          const localCatalog = StorageEngine.getCatalog();
+          const localSong = localCatalog.find((s) => s.id === catalogSongId);
+          // Only upsert the song if it belongs to the current member
+          const isMySong = localSong && (!localSong.userId || toUUID(localSong.userId) === memberUserIdUUID);
+          if (isMySong) {
+            await client.from('songs').upsert([{
+              id: songUUID,
+              user_id: memberUserIdUUID,
+              name: item.songName,
+              artist: item.songArtist,
+              original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
+              slug: '',
+              cifra_url: null
+            }], { onConflict: 'id' });
+          }
         }
 
         const { error: bsErr } = await client.from('block_songs').upsert([{
@@ -528,15 +582,21 @@ export async function syncLocalDataToSupabase(
               const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
 
               if (item.songName && item.songArtist) {
-                await client.from('songs').upsert([{
-                  id: songUUID,
-                  user_id: userIdUUID,
-                  name: item.songName,
-                  artist: item.songArtist,
-                  original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
-                  slug: '',
-                  cifra_url: null
-                }], { onConflict: 'id' });
+                const localCatalog = StorageEngine.getCatalog();
+                const localSong = localCatalog.find((s) => s.id === catalogSongId);
+                // Only upsert the song if it belongs to the current user
+                const isMySong = localSong && (!localSong.userId || toUUID(localSong.userId) === userIdUUID);
+                if (isMySong) {
+                  await client.from('songs').upsert([{
+                    id: songUUID,
+                    user_id: userIdUUID,
+                    name: item.songName,
+                    artist: item.songArtist,
+                    original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
+                    slug: '',
+                    cifra_url: null
+                  }], { onConflict: 'id' });
+                }
               }
 
               const { error: bsErr } = await client.from('block_songs').upsert([{

@@ -193,8 +193,11 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     e.preventDefault();
     if (!inviteEmail.trim()) return;
 
+    console.log('[Invite] Sending invite to:', inviteEmail, 'Role:', inviteRole);
     const success = StorageEngine.sendInvitation(setlist.id, inviteEmail, inviteRole);
+    console.log('[Invite] StorageEngine result:', success);
     if (success) {
+      console.log('[Invite] Syncing setlist after invite...');
       await triggerSync();
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');
       setInviteEmail('');

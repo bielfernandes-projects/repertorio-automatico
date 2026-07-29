@@ -303,8 +303,10 @@ export async function syncLocalDataToSupabase(
       }
 
       // Sync Members and Pending Invites
+      console.log('[Sync] Members to sync:', st.members?.length || 0);
       if (st.members && st.members.length > 0) {
         for (const m of st.members) {
+          console.log('[Sync] Processing member:', m.email, m.role, m.status);
           const memberUserUUID = toUUID(m.email);
           const memberUUID = toUUID(`${st.id}_${m.email}`);
 
@@ -312,13 +314,16 @@ export async function syncLocalDataToSupabase(
             { id: memberUserUUID, display_name: m.email }
           ], { onConflict: 'id' });
 
-          await client.from('setlist_members').upsert([{
+          const { error: memErr } = await client.from('setlist_members').upsert([{
             id: memberUUID,
             setlist_id: setlistUUID,
             user_id: memberUserUUID,
             role: m.role === 'edit' ? 'editor' : 'viewer',
-            email: m.email // Adicionado e-mail para permitir RLS baseado em e-mail
+            email: m.email
           }], { onConflict: 'id' });
+          
+          if (memErr) console.error('[Sync] Error upserting member:', memErr);
+          else console.log('[Sync] Member upserted successfully');
 
           // Sync pending invites to setlist_invites table
           if (m.status === 'pending') {

@@ -270,10 +270,11 @@ export class StorageEngine {
 
   static getSetlistsForUser(email: string): Setlist[] {
     const all = this.getSetlists();
+    const normalizedEmail = email.toLowerCase();
     return all.filter(
       (s) =>
-        s.ownerEmail === email ||
-        s.members.some((m) => m.email === email && m.status === 'accepted')
+        s.ownerEmail.toLowerCase() === normalizedEmail ||
+        s.members.some((m) => m.email.toLowerCase() === normalizedEmail)
     );
   }
 

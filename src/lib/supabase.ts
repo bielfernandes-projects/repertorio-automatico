@@ -204,7 +204,7 @@ export async function syncLocalDataToSupabase(
   const user = StorageEngine.getUser();
   const userIdUUID = toUUID(user.id);
   const targetSongs = songs || StorageEngine.getCatalog();
-  const targetSetlists = setlists || StorageEngine.getSetlistsForUser(user.email);
+  const targetSetlists = setlists || StorageEngine.getSetlists(); // Removido filtro de usuário
   console.log('[Sync] Target setlists for sync:', JSON.stringify(targetSetlists));
 
   try {

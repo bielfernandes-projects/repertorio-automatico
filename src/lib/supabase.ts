@@ -303,10 +303,10 @@ export async function syncLocalDataToSupabase(
       }
 
       // Sync Members and Pending Invites
-      console.log('[Sync] Members to sync:', st.members?.length || 0);
+      console.log('[Sync] Setlist ID:', st.id, 'Members array length:', st.members?.length);
       if (st.members && st.members.length > 0) {
+        console.log('[Sync] Members data:', JSON.stringify(st.members));
         for (const m of st.members) {
-          console.log('[Sync] Processing member:', m.email, m.role, m.status);
           const memberUserUUID = toUUID(m.email);
           const memberUUID = toUUID(`${st.id}_${m.email}`);
 

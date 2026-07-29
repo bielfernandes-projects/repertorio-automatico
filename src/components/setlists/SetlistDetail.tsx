@@ -196,7 +196,15 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     console.log('[Invite] Sending invite to:', inviteEmail, 'Role:', inviteRole);
     const success = StorageEngine.sendInvitation(setlist.id, inviteEmail, inviteRole);
     console.log('[Invite] StorageEngine result:', success);
+
     if (success) {
+      // Forçar atualização do estado local antes do sync
+      const updatedSetlist = StorageEngine.getSetlistById(setlist.id);
+      if (updatedSetlist) {
+        setSetlist(updatedSetlist);
+        console.log('[Invite] Setlist state refreshed locally');
+      }
+
       console.log('[Invite] Syncing setlist after invite...');
       await triggerSync();
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');

@@ -255,6 +255,7 @@ No banco de dados Supabase (PostgreSQL), os registros utilizam tipos de chaves p
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   display_name text not null default '',
+  email text,
   created_at timestamp with time zone default now() not null
 );
 
@@ -395,3 +396,8 @@ create table if not exists public.setlist_invites (
 - CifraClub frequentemente bloqueia iframes via `SameSite` / `X-Frame-Options`. 
 - Adicionado fallback visual padrão em `CifraWebviewModal.tsx` recomendando "Abrir no Navegador" via `window.open` para garantir acesso ao conteúdo.
 - O Iframe continua carregando em background; se conseguir (ex. com certas extensões), é renderizado e oculta o fallback, otimizando o fluxo sem quebrar a UI.
+
+### Sincronização CRUD e Mapeamento de Membros por E-mail
+- Adicionada a coluna `email` à tabela `profiles` para mapear corretamente usuários convidados e associados a setlists. Antes, a ausência do e-mail causava problemas de ambiguidade e falha de associação, fazendo o setlist desaparecer do dashboard de membros convidados após o recarregamento.
+- Implementada a propagação de deleção (DELETE) completa no `src/lib/supabase.ts` (`syncLocalDataToSupabase`), garantindo que itens (setlists, blocos, músicas) apagados localmente também sejam removidos fisicamente da base de dados na nuvem, prevenindo o reaparecimento de itens zumbis após recarregar a página.
+- Atualizado o payload de `upsert` na tela de edição de perfil e inicialização de sessão para registrar e manter o campo `email` atualizado junto com o `display_name`.

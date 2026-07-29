@@ -486,6 +486,14 @@ export async function syncLocalDataToSupabase(
       console.error('[Supabase Profile Upsert Error]', profileErr);
     }
 
+    // Fetch profiles to map member email/names to real user IDs in Supabase
+    const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
+    const profileEmailMap = new Map<string, string>();
+    (allProfilesData || []).forEach((p: any) => {
+      const nameOrEmail = (p.display_name || '').toLowerCase().trim();
+      if (nameOrEmail) profileEmailMap.set(nameOrEmail, p.id);
+    });
+
     // 1. Sync Songs — only sync songs that belong to the current logged-in user.
     // Songs from shared setlists (owned by other users) must NOT be re-synced
     // because doing so would violate the RLS policy (songs_insert_own / songs_update_own
@@ -595,19 +603,24 @@ export async function syncLocalDataToSupabase(
       if (st.members && st.members.length > 0) {
         console.log('[Sync] Members data:', JSON.stringify(st.members));
         for (const m of st.members) {
-          const memberUserUUID = toUUID(m.email);
+          const memberEmailClean = (m.email || '').toLowerCase().trim();
+          const targetUserId = profileEmailMap.get(memberEmailClean) || (memberEmailClean === user.email.toLowerCase() ? userIdUUID : null);
           const memberUUID = toUUID(`${st.id}_${m.email}`);
 
-          const { error: memErr } = await client.from('setlist_members').upsert([{
-            id: memberUUID,
-            setlist_id: setlistUUID,
-            user_id: memberUserUUID,
-            role: m.role === 'edit' ? 'editor' : 'viewer',
-            email: m.email
-          }], { onConflict: 'id' });
-          
-          if (memErr) console.error('[Sync] Error upserting member:', memErr);
-          else console.log('[Sync] Member upserted successfully');
+          if (targetUserId) {
+            const { error: memErr } = await client.from('setlist_members').upsert([{
+              id: memberUUID,
+              setlist_id: setlistUUID,
+              user_id: targetUserId,
+              role: m.role === 'edit' ? 'editor' : 'viewer',
+              email: m.email
+            }], { onConflict: 'id' });
+
+            if (memErr) console.error('[Sync] Error upserting member:', memErr);
+            else console.log('[Sync] Member upserted successfully:', m.email);
+          } else {
+            console.log(`[Sync] Member "${m.email}" has no registered profile in Supabase yet. Skipped setlist_members FK upsert.`);
+          }
 
           // Sync pending invites to setlist_invites table
           if (m.status === 'pending') {

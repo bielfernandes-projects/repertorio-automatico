@@ -316,7 +316,8 @@ export async function syncLocalDataToSupabase(
             id: memberUUID,
             setlist_id: setlistUUID,
             user_id: memberUserUUID,
-            role: m.role === 'edit' ? 'editor' : 'viewer'
+            role: m.role === 'edit' ? 'editor' : 'viewer',
+            email: m.email // Adicionado e-mail para permitir RLS baseado em e-mail
           }], { onConflict: 'id' });
 
           // Sync pending invites to setlist_invites table

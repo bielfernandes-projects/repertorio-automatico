@@ -557,15 +557,21 @@ export class StorageEngine {
   // Join Setlist via Link
   static joinSetlistViaLink(setlistId: string, userEmail: string, role: 'edit' | 'view' = 'edit'): Setlist | null {
     const setlists = this.getSetlists();
+    console.log('[Storage] Available setlists count:', setlists.length);
     const setlist = setlists.find((s) => s.id === setlistId);
-    if (!setlist) return null;
+    if (!setlist) {
+      console.log('[Storage] Setlist not found in cache. ID:', setlistId);
+      return null;
+    }
 
     const email = userEmail.trim().toLowerCase();
+    console.log('[Storage] Setlist found. Checking owner:', setlist.ownerEmail, 'vs', email);
     if (setlist.ownerEmail.toLowerCase() === email) {
       return setlist; // User is already the owner
     }
 
     let mem = setlist.members.find((m) => m.email.toLowerCase() === email);
+    console.log('[Storage] Member found:', !!mem);
     if (mem) {
       mem.status = 'accepted';
     } else {

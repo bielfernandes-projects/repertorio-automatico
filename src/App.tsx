@@ -205,14 +205,20 @@ export default function App() {
           
           // 2. If not found locally, fetch remote data from Supabase first and try again
           if (!joinedSetlist) {
+            console.log('[Share Link] Local join failed. Fetching remote data...');
             try {
               const { fetchRemoteDataFromSupabase } = await import('./lib/supabase');
               const res = await fetchRemoteDataFromSupabase();
+              console.log('[Share Link] Remote fetch result:', res);
+              
               if (res.success && res.setlists) {
+                console.log('[Share Link] Remote setlists count:', res.setlists.length);
                 // Save the merged remote setlists into local storage
                 const mergedSetlists = [...res.setlists];
                 // Sync local changes to keep them merged
                 const localSetlists = StorageEngine.getSetlists();
+                console.log('[Share Link] Local setlists count before merge:', localSetlists.length);
+                
                 localSetlists.forEach((localSt) => {
                   const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
                   if (remoteIdx >= 0) {
@@ -227,6 +233,9 @@ export default function App() {
 
                 // Try joining again now that remote setlists have been merged/loaded
                 joinedSetlist = StorageEngine.joinSetlistViaLink(pendingShareId, currentUser.email, pendingShareRole);
+                console.log('[Share Link] Joined after remote fetch:', joinedSetlist ? 'Success' : 'Failed');
+              } else {
+                console.log('[Share Link] Remote fetch unsuccessful or empty setlists');
               }
             } catch (err) {
               console.error('[Pending Share Sync Error]', err);

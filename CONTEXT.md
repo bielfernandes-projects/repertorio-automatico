@@ -313,3 +313,45 @@ create table if not exists public.setlist_invites (
 - Correção das cores do Modal de Autenticação, padronizando com o roxo (purple-600) do app.
 - Adição dos favicons e web manifests completos para PWA e navegadores.
 - Script gerado e executado para salvar 17 músicas extraídas do cache local do usuário e inseridas diretamente na tabela Supabase.
+
+## Correções de Responsividade e Estabilidade (Julho 2026)
+
+### Bloco Focado — Nome das Músicas no Mobile
+- Layout do cartão alterado de `flex items-center justify-between` para `flex flex-col md:flex-row md:items-center`.
+- Mobile: `[01. Nome | Tom]` na linha 1, `[ações]` na linha 2 (com `border-t`).
+- Desktop: `[01. Nome]` inline com `[Tom + ações]` (inalterado).
+- Extraídos `ItemActionButtons` e `KeyBadgeDisplay` como sub-componentes para evitar duplicação de JSX.
+
+### Bloco Focado — Remoção do Header Superior
+- Removida a div de informações do bloco (`bg-slate-900/90`) que ocupava espaço excessivo no mobile.
+- O nome do bloco já é exibido no canto superior direito (`Header.tsx`).
+- Contagem de músicas e botão "Adicionar Música" movidos para o final da lista de músicas.
+- Variável não utilizada `themeStyle` e import de `getThemeColorStyle` removidos.
+
+### Visualização de Documentos (PDF / Imagens)
+- **Upload**: Funcionalidade inalterada — até 5 arquivos (10MB cada), armazenados como `dataUrl` base64.
+- **Preview de Imagens**: `<img>` tag com `dataUrl`, funcionando consistentemente.
+- **Preview de PDFs**: Corrigido de `dataUrl` direto no `<iframe>` para `Blob URL` via `dataUrlToBlobUrl()`, que tem compatibilidade muito superior no mobile (iOS Safari bloqueava data URIs em iframes).
+- **Fallback**: Se o iframe de PDF falhar, exibe opção "Abrir Externamente" com fallback visual (mesmo padrão do CifraWebviewModal).
+- **Clique na linha**: Toda a linha do documento é clicável para abrir preview, não apenas o ícone de olho.
+- **Limpeza de memória**: `URL.revokeObjectURL()` ao fechar preview.
+- CSP em `vercel.json` atualizado com `blob:` em `frame-src`.
+
+### Service Worker (sw.js)
+- Corrigido `event.respondWith(undefined)` no handler de fetch — o catch retornava `undefined` para recursos não cacheados que não fossem navegação (ex: Google Fonts), causando erro "passou promise com valor undefined".
+- Agora retorna `new Response('Offline', { status: 503 })` como fallback.
+- Log de erro de registro melhorado no `index.html`.
+
+### Iframe de Cifras (CifraWebviewModal)
+- Removido `allow-same-origin` do atributo `sandbox`. A combinação `allow-same-origin` + `allow-scripts` anula o isolamento do sandbox, gerando warning no console.
+
+### Resiliência do Root DOM
+- `main.tsx` agora verifica se o elemento `#root` existe antes de chamar `createRoot()`. Se não existir (causado por extensões como `spoofer.js` que removem o `#root` ou corrompem o contexto), o elemento é recriado antes da chamada.
+- Corrige o React error #299 ("Target container is not a DOM element") que aparecia em produção em alguns navegadores com extensões instaladas.
+
+### PWA — Nome do App e Instalação
+- **`site.webmanifest`**: Corrigido de `"name":""` e `"short_name":""` (vazios, fazia o OS mostrar "Site") para `"name":"Repertório Automático"` e `"short_name":"Repertório"`.
+- **Meta tags**: Adicionados `apple-mobile-web-app-title` e `application-name` no `index.html`.
+- **Botão "Instalar App no Celular"**: Agora abre um modal com instruções detalhadas para Android (Chrome), iPhone/iPad (Safari) e Computador, em vez de um toast curto com mensagem cortada.
+- Captura global do evento `beforeinstallprompt` antes do React montar para não perder o evento que dispara cedo.
+- Detecta `display-mode: standalone` para informar quando o app já está instalado.

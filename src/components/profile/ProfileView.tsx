@@ -33,7 +33,9 @@ import {
   Edit3,
   Check,
   X,
-  Camera
+  Camera,
+  Smartphone,
+  Monitor
 } from 'lucide-react';
 
 interface ProfileViewProps {
@@ -178,6 +180,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
 
   // PWA install prompt state
   const [deferredPrompt, setDeferredPrompt] = useState<any>(globalDeferredPrompt);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
   const reloadData = () => {
@@ -211,7 +214,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
       return;
     }
     if (!deferredPrompt) {
-      showToast('Use o menu do navegador > "Adicionar à Tela de Início" para instalar.', 'info');
+      setShowInstallHelp(true);
       return;
     }
     deferredPrompt.prompt();
@@ -660,6 +663,51 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
         <LogOut className="w-4 h-4" />
         <span>Sair da Conta (Logout)</span>
       </button>
+
+      {/* PWA Install Help Modal */}
+      <Modal isOpen={showInstallHelp} onClose={() => setShowInstallHelp(false)} title="Instalar Repertório Automático">
+        <div className="space-y-4 text-xs text-zinc-300">
+          <div className="bg-purple-950/30 border border-purple-800/40 rounded-2xl p-4 flex items-start gap-3">
+            <Smartphone className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-purple-200">Android (Chrome)</p>
+              <p className="text-zinc-400">
+                Toque no menu <span className="text-zinc-200 font-semibold">⋮</span> (três pontos) e selecione{' '}
+                <span className="text-zinc-200 font-semibold">"Adicionar à Tela de Início"</span>.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-purple-950/30 border border-purple-800/40 rounded-2xl p-4 flex items-start gap-3">
+            <Smartphone className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-purple-200">iPhone / iPad (Safari)</p>
+              <p className="text-zinc-400">
+                Toque no ícone <span className="text-zinc-200 font-semibold">⬆️ Compartilhar</span> (ou o quadrado com seta
+                pra cima) e escolha{' '}
+                <span className="text-zinc-200 font-semibold">"Adicionar à Tela de Início"</span>.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-purple-950/30 border border-purple-800/40 rounded-2xl p-4 flex items-start gap-3">
+            <Monitor className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-purple-200">Computador (Chrome / Edge)</p>
+              <p className="text-zinc-400">
+                Clique no ícone de <span className="text-zinc-200 font-semibold">instalar</span> {'{}'}
+                na barra de endereço ou no menu e escolha{' '}
+                <span className="text-zinc-200 font-semibold">"Instalar Repertório Automático"</span>.
+              </p>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-zinc-500 text-center pt-2">
+            Após instalar, o app aparecerá na tela de início como um aplicativo nativo,
+            com acesso offline às suas músicas e setlists.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 };

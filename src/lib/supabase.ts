@@ -118,6 +118,7 @@ create extension if not exists "uuid-ossp";
 create table if not exists public.profiles (
   id uuid references auth.users on delete cascade primary key,
   display_name text not null default '',
+  email text not null default '',
   created_at timestamp with time zone default now() not null
 );
 
@@ -278,6 +279,20 @@ async function syncMemberEditsToSupabase(
 
   if (!st.blocks || st.blocks.length === 0) return;
 
+  // Clean up deleted blocks
+  const { data: dbBlocks, error: fetchBlocksErr } = await client
+    .from('blocks')
+    .select('id')
+    .eq('setlist_id', setlistUUID);
+
+  if (!fetchBlocksErr && dbBlocks) {
+    const localBlockUUIDs = new Set(st.blocks.map((b) => toUUID(b.id)));
+    const blocksToDelete = dbBlocks.map((b: any) => b.id).filter((id: string) => !localBlockUUIDs.has(id));
+    if (blocksToDelete.length > 0) {
+      await client.from('blocks').delete().in('id', blocksToDelete);
+    }
+  }
+
   for (let blockIdx = 0; blockIdx < st.blocks.length; blockIdx++) {
     const b = st.blocks[blockIdx];
     const blockUUID = toUUID(b.id);
@@ -293,6 +308,25 @@ async function syncMemberEditsToSupabase(
     if (blockErr) {
       console.warn('[Sync Member] Could not upsert block (RLS policy may be missing):', blockErr.message);
       continue;
+    }
+
+    // Clean up deleted block_songs for this block
+    const { data: dbBlockSongs, error: fetchBSErr } = await client
+      .from('block_songs')
+      .select('id')
+      .eq('block_id', blockUUID);
+
+    if (!fetchBSErr && dbBlockSongs) {
+      const localBSUUIDs = new Set(
+        (b.items || []).map((item) => {
+          const catalogSongId = item.catalogSongId || item.id;
+          return toUUID(`${b.id}_${catalogSongId}`);
+        })
+      );
+      const bsToDelete = dbBlockSongs.map((bs: any) => bs.id).filter((id: string) => !localBSUUIDs.has(id));
+      if (bsToDelete.length > 0) {
+        await client.from('block_songs').delete().in('id', bsToDelete);
+      }
     }
 
     if (b.items && b.items.length > 0) {
@@ -478,20 +512,20 @@ export async function syncLocalDataToSupabase(
       console.log('[Sync] First setlist members:', JSON.stringify(localSetlists[0].members));
     }
 
-    // 0. Ensure user profile exists
+    // 0. Ensure user profile exists (including email)
     const { error: profileErr } = await client.from('profiles').upsert([
-      { id: userIdUUID, display_name: user.name }
+      { id: userIdUUID, display_name: user.name, email: user.email }
     ], { onConflict: 'id' });
     if (profileErr) {
       console.error('[Supabase Profile Upsert Error]', profileErr);
     }
 
-    // Fetch profiles to map member email/names to real user IDs in Supabase
-    const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
+    // Fetch profiles to map member email/names to real user IDs in Supabase (selecting email too)
+    const { data: allProfilesData } = await client.from('profiles').select('id, display_name, email');
     const profileEmailMap = new Map<string, string>();
     (allProfilesData || []).forEach((p: any) => {
-      const nameOrEmail = (p.display_name || '').toLowerCase().trim();
-      if (nameOrEmail) profileEmailMap.set(nameOrEmail, p.id);
+      const email = (p.email || p.display_name || '').toLowerCase().trim();
+      if (email) profileEmailMap.set(email, p.id);
     });
 
     // 1. Sync Songs — only sync songs that belong to the current logged-in user.
@@ -501,8 +535,26 @@ export async function syncLocalDataToSupabase(
     const ownSongs = targetSongs.filter(
       (s) => !s.userId || toUUID(s.userId) === userIdUUID
     );
+
+    // Delete songs that were deleted locally
+    const { data: dbSongs, error: fetchSongsErr } = await client
+      .from('songs')
+      .select('id')
+      .eq('user_id', userIdUUID);
+
+    if (!fetchSongsErr && dbSongs) {
+      const localSongUUIDs = new Set(ownSongs.map((s) => toUUID(s.id)));
+      const songsToDelete = dbSongs.map((s: any) => s.id).filter((id: string) => !localSongUUIDs.has(id));
+      if (songsToDelete.length > 0) {
+        const { error: delErr } = await client.from('songs').delete().in('id', songsToDelete);
+        if (delErr) {
+          console.warn('[Sync] Could not delete songs (RLS policy may prevent this):', delErr.message);
+        }
+      }
+    }
+
     if (ownSongs.length > 0) {
-      const dbSongs = ownSongs.map((s) => ({
+      const dbSongsData = ownSongs.map((s) => ({
         id: toUUID(s.id),
         user_id: userIdUUID,
         name: s.name,
@@ -513,8 +565,29 @@ export async function syncLocalDataToSupabase(
         documents: s.documents || []
       }));
 
-      const { error: songErr } = await client.from('songs').upsert(dbSongs, { onConflict: 'id' });
+      const { error: songErr } = await client.from('songs').upsert(dbSongsData, { onConflict: 'id' });
       if (songErr) throw new Error(`Erro sincronizando músicas: ${songErr.message}`);
+    }
+
+    // Delete setlists that were deleted locally
+    const { data: dbSetlists, error: fetchSetlistsErr } = await client
+      .from('setlists')
+      .select('id')
+      .eq('user_id', userIdUUID);
+
+    if (!fetchSetlistsErr && dbSetlists) {
+      const ownSetlistUUIDs = new Set(
+        targetSetlists
+          .filter((st) => !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase())
+          .map((st) => toUUID(st.id))
+      );
+      const setlistsToDelete = dbSetlists.map((s: any) => s.id).filter((id: string) => !ownSetlistUUIDs.has(id));
+      if (setlistsToDelete.length > 0) {
+        const { error: delErr } = await client.from('setlists').delete().in('id', setlistsToDelete);
+        if (delErr) {
+          console.warn('[Sync] Could not delete setlists (RLS policy may prevent this):', delErr.message);
+        }
+      }
     }
 
     // 2. Sync Setlists, Blocks, Block Songs, Invites and Members
@@ -542,6 +615,23 @@ export async function syncLocalDataToSupabase(
 
       if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
 
+      // Clean up deleted blocks for this setlist
+      const { data: dbBlocks, error: fetchBlocksErr } = await client
+        .from('blocks')
+        .select('id')
+        .eq('setlist_id', setlistUUID);
+
+      if (!fetchBlocksErr && dbBlocks) {
+        const localBlockUUIDs = new Set((st.blocks || []).map((b) => toUUID(b.id)));
+        const blocksToDelete = dbBlocks.map((b: any) => b.id).filter((id: string) => !localBlockUUIDs.has(id));
+        if (blocksToDelete.length > 0) {
+          const { error: delBlockErr } = await client.from('blocks').delete().in('id', blocksToDelete);
+          if (delBlockErr) {
+            console.warn('[Sync] Could not delete blocks (RLS policy may prevent this):', delBlockErr.message);
+          }
+        }
+      }
+
       // Sync Blocks & Block Songs
       if (st.blocks && st.blocks.length > 0) {
         for (let blockIdx = 0; blockIdx < st.blocks.length; blockIdx++) {
@@ -557,6 +647,28 @@ export async function syncLocalDataToSupabase(
           }], { onConflict: 'id' });
 
           if (blockErr) throw new Error(`Erro sincronizando bloco "${b.name}": ${blockErr.message}`);
+
+          // Clean up deleted block_songs for this block
+          const { data: dbBlockSongs, error: fetchBSErr } = await client
+            .from('block_songs')
+            .select('id')
+            .eq('block_id', blockUUID);
+
+          if (!fetchBSErr && dbBlockSongs) {
+            const localBSUUIDs = new Set(
+              (b.items || []).map((item) => {
+                const catalogSongId = item.catalogSongId || item.id;
+                return toUUID(`${b.id}_${catalogSongId}`);
+              })
+            );
+            const bsToDelete = dbBlockSongs.map((bs: any) => bs.id).filter((id: string) => !localBSUUIDs.has(id));
+            if (bsToDelete.length > 0) {
+              const { error: delBSErr } = await client.from('block_songs').delete().in('id', bsToDelete);
+              if (delBSErr) {
+                console.warn('[Sync] Could not delete block_songs (RLS policy may prevent this):', delBSErr.message);
+              }
+            }
+          }
 
           if (b.items && b.items.length > 0) {
             for (let itemIdx = 0; itemIdx < b.items.length; itemIdx++) {
@@ -594,6 +706,53 @@ export async function syncLocalDataToSupabase(
 
               if (bsErr) throw new Error(`Erro vinculando música no bloco: ${bsErr.message}`);
             }
+          }
+        }
+      }
+
+      // Clean up deleted members and invites
+      const { data: dbMembers, error: fetchMembersErr } = await client
+        .from('setlist_members')
+        .select('id, user_id')
+        .eq('setlist_id', setlistUUID);
+
+      if (!fetchMembersErr && dbMembers) {
+        const localMemberUUIDs = new Set((st.members || []).map((m) => toUUID(`${st.id}_${m.email}`)));
+        const membersToDelete = dbMembers
+          .filter((m: any) => toUUID(m.user_id) !== userIdUUID)
+          .map((m: any) => m.id)
+          .filter((id: string) => !localMemberUUIDs.has(id));
+
+        if (membersToDelete.length > 0) {
+          const { error: delMemErr } = await client.from('setlist_members').delete().in('id', membersToDelete);
+          if (delMemErr) {
+            console.error('[Sync] Error deleting member:', delMemErr.message);
+          }
+        }
+      }
+
+      const { data: dbInvites, error: fetchInvitesErr } = await client
+        .from('setlist_invites')
+        .select('id')
+        .eq('setlist_id', setlistUUID);
+
+      if (!fetchInvitesErr && dbInvites) {
+        const localInviteUUIDs = new Set(
+          (st.members || [])
+            .filter((m) => m.status === 'pending')
+            .map((m) => toUUID(`invite_${st.id}_${m.email}`))
+        );
+        const invitesToDelete = dbInvites
+          .map((i: any) => i.id)
+          .filter((id: string) => {
+            if (id === toUUID(`link_share_${st.id}`)) return false;
+            return !localInviteUUIDs.has(id);
+          });
+
+        if (invitesToDelete.length > 0) {
+          const { error: delInvErr } = await client.from('setlist_invites').delete().in('id', invitesToDelete);
+          if (delInvErr) {
+            console.error('[Sync] Error deleting invite:', delInvErr.message);
           }
         }
       }
@@ -681,11 +840,11 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
     // Fetch all profiles to build:
     // - email → id map (for member matching)
     // - id → display_name map (for showing owner name in the UI)
-    const { data: allProfilesData } = await client.from('profiles').select('id, display_name');
+    const { data: allProfilesData } = await client.from('profiles').select('id, display_name, email');
     const profileEmailMap = new Map<string, string>();
     const profileIdToNameMap = new Map<string, string>();
     (allProfilesData || []).forEach((p: any) => {
-      const email = (p.display_name || '').toLowerCase().trim();
+      const email = (p.email || p.display_name || '').toLowerCase().trim();
       if (email) profileEmailMap.set(email, p.id);
       if (p.id && p.display_name) profileIdToNameMap.set(p.id, p.display_name);
     });
@@ -765,11 +924,13 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
         .filter((mRow: any) => mRow.setlist_id === stRow.id)
         .map((mRow: any) => {
           const memberProfileId = mRow.user_id;
-          let memberEmail = 'membro@repertorio.app';
-          for (const [email, uid] of profileEmailMap.entries()) {
-            if (uid === memberProfileId) {
-              memberEmail = email;
-              break;
+          let memberEmail = mRow.email || 'membro@repertorio.app';
+          if (memberEmail === 'membro@repertorio.app') {
+            for (const [email, uid] of profileEmailMap.entries()) {
+              if (uid === memberProfileId) {
+                memberEmail = email;
+                break;
+              }
             }
           }
           const isMemberCurrentUser = memberEmail === user.email.toLowerCase();
@@ -881,7 +1042,8 @@ export async function selfJoinSetlistAsMember(
     // Ensure the user has a profile entry
     await client.from('profiles').upsert([{
       id: userIdUUID,
-      display_name: user.name || user.email
+      display_name: user.name || user.email,
+      email: user.email
     }], { onConflict: 'id' });
 
     const { error } = await client.from('setlist_members').upsert([{

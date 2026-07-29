@@ -68,7 +68,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
         const { toUUID } = await import('../../lib/supabase');
         const userIdUUID = toUUID(user.id);
         const { error } = await client.from('profiles').upsert([
-          { id: userIdUUID, display_name: editName.trim() }
+          { id: userIdUUID, display_name: editName.trim(), email: user.email }
         ], { onConflict: 'id' });
         
         if (error) {

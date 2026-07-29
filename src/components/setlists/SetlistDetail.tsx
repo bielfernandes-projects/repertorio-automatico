@@ -101,15 +101,15 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   const handleSaveSetlistName = async () => {
     if (editSetName.trim() && editSetName !== setlist.name) {
       StorageEngine.updateSetlistName(setlist.id, editSetName);
-      await triggerSync();
+      await triggerSync(StorageEngine.getSetlists());
       showToast('Nome do setlist atualizado!', 'success');
     }
     setIsEditingName(false);
   };
 
-  const triggerSync = async () => {
+  const triggerSync = async (setlists?: Setlist[]) => {
     if (StorageEngine.getSupabaseConfig().isConnected) {
-      const result = await syncLocalDataToSupabase();
+      const result = await syncLocalDataToSupabase(undefined, setlists);
       if (!result.success) {
         showToast(`Erro ao sincronizar: ${result.message}`, 'error');
       }
@@ -167,7 +167,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       description: `Todas as ${block.items.length} referências de músicas dentro deste bloco serão removidas do setlist.`,
       onConfirm: async () => {
         StorageEngine.deleteBlock(setlist.id, block.id);
-        await triggerSync();
+        await triggerSync(StorageEngine.getSetlists());
         showToast(`Bloco "${block.name}" removido.`, 'info');
       }
     });
@@ -206,7 +206,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       }
 
       console.log('[Invite] Syncing setlist after invite...');
-      await triggerSync();
+      await triggerSync(StorageEngine.getSetlists());
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');
       setInviteEmail('');
     } else {
@@ -223,7 +223,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
       affectedSetlistsCount: 0,
       onConfirm: async () => {
         StorageEngine.revokeInvitation(setlist.id, email);
-        await triggerSync();
+        await triggerSync(StorageEngine.getSetlists());
         showToast('Convite revogado.', 'info');
       }
     });

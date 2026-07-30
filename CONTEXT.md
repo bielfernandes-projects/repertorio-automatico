@@ -401,3 +401,14 @@ create table if not exists public.setlist_invites (
 - Adicionada a coluna `email` à tabela `profiles` para mapear corretamente usuários convidados e associados a setlists. Antes, a ausência do e-mail causava problemas de ambiguidade e falha de associação, fazendo o setlist desaparecer do dashboard de membros convidados após o recarregamento.
 - Implementada a propagação de deleção (DELETE) completa no `src/lib/supabase.ts` (`syncLocalDataToSupabase`), garantindo que itens (setlists, blocos, músicas) apagados localmente também sejam removidos fisicamente da base de dados na nuvem, prevenindo o reaparecimento de itens zumbis após recarregar a página.
 - Atualizado o payload de `upsert` na tela de edição de perfil e inicialização de sessão para registrar e manter o campo `email` atualizado junto com o `display_name`.
+
+## Correções de Segurança (Julho 2026)
+
+### Validação Estrita de Upload de Anexos
+- `SongDocumentsModal.tsx` agora importa e utiliza `isAllowedFileType()` de `src/lib/sanitize.ts` para validar tanto a extensão quanto o MIME type do arquivo antes de processar o upload.
+- Arquivos como `.exe`, `.html` ou qualquer formato fora da lista permitida (`pdf`, `jpg`, `jpeg`, `png`, `gif`, `webp`) são rejeitados com toast de erro, impedindo o processamento mesmo se o navegador reportar um MIME type falsificado.
+
+### Otimização da Content Security Policy (CSP)
+- Removido `'unsafe-inline'` de `script-src` no `vercel.json`, eliminando a permissão genérica para execução de scripts inline.
+- Registro do Service Worker movido do `<script>` inline no `index.html` para o bundle JavaScript em `src/main.tsx`, executado no evento `load` do window.
+- `script-src` final: `'self' https://va.vercel-scripts.com` — apenas scripts do próprio domínio e Vercel Analytics são permitidos.

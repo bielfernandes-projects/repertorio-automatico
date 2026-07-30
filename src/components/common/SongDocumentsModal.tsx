@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { StorageEngine } from '../../lib/storage';
 import { CatalogSong, SongDocument } from '../../types';
 import { useAppStore } from '../../lib/store';
+import { isAllowedFileType } from '../../lib/sanitize';
 import {
   FileText,
   Upload,
@@ -100,6 +101,12 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
     setIsUploading(true);
 
     Array.from(files).forEach((file: File) => {
+      if (!isAllowedFileType(file.name, file.type)) {
+        showToast(`Formato de arquivo não permitido: "${file.name}". Use PDF ou imagens (PNG, JPG, GIF, WebP).`, 'error');
+        setIsUploading(false);
+        return;
+      }
+
       // 10MB max limit
       if (file.size > 10 * 1024 * 1024) {
         showToast(`Arquivo "${file.name}" é maior que 10MB.`, 'error');

@@ -24,15 +24,7 @@
   <body class="bg-zinc-100 dark:bg-slate-950 text-zinc-900 dark:text-slate-100 font-sans antialiased select-none overscroll-none min-h-screen transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(err => {
-            console.error('SW registration failed:', err ? (err.message || err) : 'undefined error (check console for details)');
-          });
-        });
-      }
-    </script>
+
   </body>
 </html>
 

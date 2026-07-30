@@ -18,3 +18,11 @@ createRoot(root).render(
     <Analytics />
   </StrictMode>,
 );
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.error('SW registration failed:', err ? (err.message || err) : 'undefined error (check console for details)');
+    });
+  });
+}

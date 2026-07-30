@@ -428,6 +428,14 @@ create table if not exists public.setlist_invites (
 ### CifraWebviewModal — Sandbox Corrigido
 - Removido `allow-same-origin` e `allow-scripts` do atributo `sandbox` do iframe de cifras. Antes: `allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation`. Depois: `allow-popups allow-forms allow-storage-access-by-user-activation`. A remoção coloca o iframe em unique origin, impedindo frame-busting via scripts do CifraClub.
 
+### Correção de Vazamento de Setlists via Link Share (Julho 2026)
+- Corrigido vazamento de segurança onde setlists com link de compartilhamento habilitado (`__link_share__`) apareciam como "Compartilhados Comigo" para usuários que nunca aceitaram um convite.
+- **Causa raiz**: Dois gatilhos encadeados:
+  1. `fetchRemoteDataFromSupabase()` (`src/lib/supabase.ts:881`) fazia `setlists.select('*')`, e a política RLS `users_select_setlists` retorna qualquer setlist com `__link_share__` para **todo usuário autenticado**. Esses setlists eram salvos no localStorage sem verificação de membership.
+  2. `syncLocalDataToSupabase()` (`src/lib/supabase.ts:611-627`) — ao encontrar um setlist não-dono no localStorage, chamava automaticamente `selfJoinSetlistAsMember(st.id, 'edit')`, inscrevendo o usuário como editor do setlist sem consentimento explícito.
+- **Correção A — Filtro no fetch** (`src/lib/supabase.ts:878-882`): Após buscar setlists do Supabase, filtra para manter apenas aqueles onde o usuário é dono (`st.user_id === currentUserUUID`) ou membro existente (`membersData` já filtrado por `user_id`).
+- **Correção B — Remoção do auto-join** (`src/lib/supabase.ts:611-622`): Removeu o `else` que chamava `selfJoinSetlistAsMember()`. Agora o sync apenas sincroniza edições se o usuário já for membro com papel `edit`; caso contrário, pula o setlist com log. O auto-join só ocorre no fluxo explícito de aceite via modal "Salvar na minha conta" em `App.tsx:handleAcceptShare()`.
+
 ### Otimizações de Performance (Julho 2026)
 - **Parallelização de sync (`supabase.ts`)**: Block upserts e member upserts transformados de loops sequenciais para `Promise.all`, reduzindo drasticamente o tempo de sincronização.
 - **Remoção de upsert redundante de songs**: Cada música era upsertada 1x no batch + 1x por block_item que a referenciava. Removido o upsert individual (o batch já cobre todas).

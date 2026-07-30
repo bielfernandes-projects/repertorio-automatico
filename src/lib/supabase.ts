@@ -609,20 +609,15 @@ export async function syncLocalDataToSupabase(
       const isOwner = !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase();
 
       if (!isOwner) {
-        // If the current user is an editor member of this setlist, sync their block edits
         const myMembership = st.members?.find(
           (m) => m.email.toLowerCase() === user.email.toLowerCase()
         );
         if (myMembership?.role === 'edit') {
           await syncMemberEditsToSupabase(client, st, userIdUUID);
+        } else if (myMembership) {
+          console.log('[Sync] Member with view role, skipping sync for setlist:', st.name);
         } else {
-          // Membership not found locally (e.g. merge overwrote it, or self-join failed).
-          // Attempt to create it and then sync block edits.
-          const joined = await selfJoinSetlistAsMember(st.id, 'edit');
-          if (joined) {
-            console.log('[Sync] Self-joined as editor for setlist:', st.id);
-            await syncMemberEditsToSupabase(client, st, userIdUUID);
-          }
+          console.log('[Sync] Skipping non-owned setlist without membership:', st.name);
         }
         continue;
       }
@@ -878,8 +873,13 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       .from('songs')
       .select('*')
       .eq('user_id', currentUserUUID);
-    const { data: setlistsData, error: setlistsErr } = await client.from('setlists').select('*');
-    console.log('[Supabase Fetch] Setlists data query result:', setlistsData, 'Error:', setlistsErr);
+    const { data: rawSetlistsData, error: setlistsErr } = await client.from('setlists').select('*');
+    console.log('[Supabase Fetch] Setlists data query result:', rawSetlistsData, 'Error:', setlistsErr);
+    const setlistsData = (rawSetlistsData || []).filter((st: any) => {
+      const isOwner = st.user_id === currentUserUUID;
+      const isMember = (membersData || []).some((m: any) => m.setlist_id === st.id);
+      return isOwner || isMember;
+    });
 
     const { data: blocksData, error: blocksErr } = await client.from('blocks').select('*').order('position', { ascending: true });
     const { data: blockSongsData, error: bsErr } = await client.from('block_songs').select('*').order('position', { ascending: true });

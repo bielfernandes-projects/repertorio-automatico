@@ -371,7 +371,7 @@ create table if not exists public.setlist_invites (
 - Corrige o React error #299 ("Target container is not a DOM element") que aparecia em produção em alguns navegadores com extensões instaladas.
 
 ### PWA — Nome do App e Instalação
-- **`site.webmanifest`**: Corrigido de `"name":""` e `"short_name":""` (vazios, fazia o OS mostrar "Site") para `"name":"Repertório Automático"` e `"short_name":"Repertório"`.
+- **`site.webmanifest`**: Corrigido definitivamente o conteúdo — `name`, `short_name`, `theme_color` e `background_color` estavam incorretos (vazios ou branco), fazendo o SO mostrar "Site". Atualizado para `"name":"Repertório Automático"`, `"short_name":"Repertório"`, `theme_color: "#0f172a"`, `background_color: "#090d16"`.
 - **Meta tags**: Adicionados `apple-mobile-web-app-title` e `application-name` no `index.html`.
 - **Botão "Instalar App no Celular"**: Agora abre um modal com instruções detalhadas para Android (Chrome), iPhone/iPad (Safari) e Computador, em vez de um toast curto com mensagem cortada.
 - Captura global do evento `beforeinstallprompt` antes do React montar para não perder o evento que dispara cedo.

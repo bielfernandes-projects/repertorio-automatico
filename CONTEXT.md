@@ -433,3 +433,4 @@ create table if not exists public.setlist_invites (
 - **Remoção de upsert redundante de songs**: Cada música era upsertada 1x no batch + 1x por block_item que a referenciava. Removido o upsert individual (o batch já cobre todas).
 - **Filtros `.eq()` no fetch**: Adicionados filtros `user_id` nas queries de `songs` e `setlist_members`, evitando scan completo das tabelas com avaliação de RLS linha a linha.
 - **Memoização de `getCatalog()`**: `StorageEngine.getCatalog()` (que faz JSON.parse + sort a cada chamada) movido para `useMemo` em `SetlistDetail.tsx` e `FocusedBlockView.tsx`, eliminando chamadas redundantes no render loop.
+- **Merge de dados colaborativo no sync**: Ao fazer upsert de `block_songs`, o sync agora preserva valores do Supabase (`notes`, `requested_key`) quando o dado local não tem conteúdo. Isso evita que o sync do dono sobrescreva alterações feitas por editores.

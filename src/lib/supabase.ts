@@ -314,7 +314,7 @@ async function syncMemberEditsToSupabase(
       // Clean up deleted block_songs for this block
       const { data: dbBlockSongs, error: fetchBSErr } = await client
         .from('block_songs')
-        .select('id')
+        .select('id, notes, requested_key')
         .eq('block_id', blockUUID);
 
       if (!fetchBSErr && dbBlockSongs) {
@@ -330,12 +330,23 @@ async function syncMemberEditsToSupabase(
         }
       }
 
+      // Build a lookup map of existing Supabase values for merge
+      const existingBSMap = new Map<string, { notes?: string | null; requested_key?: string }>();
+      (dbBlockSongs || []).forEach((bs: any) => {
+        existingBSMap.set(bs.id, { notes: bs.notes, requested_key: bs.requested_key });
+      });
+
       if (b.items && b.items.length > 0) {
         await Promise.all(
           b.items.map(async (item, itemIdx) => {
             const catalogSongId = item.catalogSongId || item.id;
             const songUUID = toUUID(catalogSongId);
             const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
+
+            // Merge: preserve existing Supabase values when local has no data
+            const existing = existingBSMap.get(blockSongUUID);
+            const mergedNotes = item.notes || existing?.notes || null;
+            const mergedKey = item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || existing?.requested_key || '';
 
             // Ensure the song exists — use the member's user_id since the song is from their catalog
             if (item.songName && item.songArtist) {
@@ -361,8 +372,8 @@ async function syncMemberEditsToSupabase(
               block_id: blockUUID,
               song_id: songUUID,
               position: item.position !== undefined ? item.position : itemIdx,
-              requested_key: item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || '',
-              notes: item.notes || null
+              requested_key: mergedKey,
+              notes: mergedNotes
             }], { onConflict: 'id' });
 
             if (bsErr) {
@@ -657,10 +668,10 @@ export async function syncLocalDataToSupabase(
           st.blocks.map(async (b) => {
             const blockUUID = toUUID(b.id);
 
-            // Clean up deleted block_songs for this block
+            // Fetch existing block_songs for this block (merge data before upsert)
             const { data: dbBlockSongs, error: fetchBSErr } = await client
               .from('block_songs')
-              .select('id')
+              .select('id, notes, requested_key')
               .eq('block_id', blockUUID);
 
             if (!fetchBSErr && dbBlockSongs) {
@@ -679,6 +690,12 @@ export async function syncLocalDataToSupabase(
               }
             }
 
+            // Build a lookup map of existing Supabase values for merge
+            const existingBSMap = new Map<string, { notes?: string | null; requested_key?: string }>();
+            (dbBlockSongs || []).forEach((bs: any) => {
+              existingBSMap.set(bs.id, { notes: bs.notes, requested_key: bs.requested_key });
+            });
+
             if (b.items && b.items.length > 0) {
               await Promise.all(
                 b.items.map(async (item, itemIdx) => {
@@ -686,13 +703,18 @@ export async function syncLocalDataToSupabase(
                   const songUUID = toUUID(catalogSongId);
                   const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
 
+                  // Merge: preserve existing Supabase values when local has no data
+                  const existing = existingBSMap.get(blockSongUUID);
+                  const mergedNotes = item.notes || existing?.notes || null;
+                  const mergedKey = item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || existing?.requested_key || '';
+
                   const { error: bsErr } = await client.from('block_songs').upsert([{
                     id: blockSongUUID,
                     block_id: blockUUID,
                     song_id: songUUID,
                     position: item.position !== undefined ? item.position : itemIdx,
-                    requested_key: item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || '',
-                    notes: item.notes || null
+                    requested_key: mergedKey,
+                    notes: mergedNotes
                   }], { onConflict: 'id' });
 
                   if (bsErr) throw new Error(`Erro vinculando música no bloco: ${bsErr.message}`);

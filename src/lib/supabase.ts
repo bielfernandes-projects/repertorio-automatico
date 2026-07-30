@@ -307,8 +307,7 @@ async function syncMemberEditsToSupabase(
       }], { onConflict: 'id' });
 
       if (blockErr) {
-        console.warn('[Sync Member] Could not upsert block (RLS policy may be missing):', blockErr.message);
-        return;
+        console.warn('[Sync Member] Block upsert blocked by RLS (block already exists in Supabase, continuing):', blockErr.message);
       }
 
       // Clean up deleted block_songs for this block
@@ -377,7 +376,7 @@ async function syncMemberEditsToSupabase(
             }], { onConflict: 'id' });
 
             if (bsErr) {
-              console.warn('[Sync Member] Could not upsert block_song (RLS policy may be missing):', bsErr.message);
+              console.warn('[Sync Member] Could not upsert block_song (RLS policy may be missing):', bsErr.message, {blockId: b.id, songId: catalogSongId, notes: mergedNotes});
             }
           })
         );

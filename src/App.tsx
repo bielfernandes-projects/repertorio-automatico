@@ -374,7 +374,10 @@ export default function App() {
               const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
               if (remoteIdx >= 0) {
                 const remoteSt = mergedSetlists[remoteIdx];
-                if ((localSt.updatedAt || localSt.createdAt) > (remoteSt.updatedAt || remoteSt.createdAt)) {
+                const localUpdatedAt = localSt.updatedAt || localSt.createdAt || '';
+                const remoteUpdatedAt = remoteSt.updatedAt || remoteSt.createdAt || '';
+                if ((localUpdatedAt) > (remoteUpdatedAt)) {
+                  console.log('[Merge] Local setlist newer, merging block-item notes from remote', {setlist: localSt.name, localUpdatedAt, remoteUpdatedAt});
                   if (remoteSt.blocks) {
                     localSt.blocks?.forEach((localBlock) => {
                       const remoteBlock = remoteSt.blocks.find((b) => b.id === localBlock.id);
@@ -390,6 +393,8 @@ export default function App() {
                     });
                   }
                   mergedSetlists[remoteIdx] = localSt;
+                } else {
+                  console.log('[Merge] Remote setlist kept (equal or newer)', {setlist: localSt.name, localUpdatedAt, remoteUpdatedAt});
                 }
               } else {
                 mergedSetlists.push(localSt);

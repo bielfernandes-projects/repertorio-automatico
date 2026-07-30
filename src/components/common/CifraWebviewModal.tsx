@@ -207,7 +207,7 @@ export const CifraWebviewModal: React.FC = () => {
           className={`w-full h-full border-0 bg-white transition-opacity duration-300 ${
             iframeLoaded === true ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
-          sandbox="allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation"
+          sandbox="allow-popups allow-forms allow-storage-access-by-user-activation"
         />
       </div>
     </div>

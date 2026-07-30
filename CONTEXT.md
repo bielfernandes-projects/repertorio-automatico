@@ -364,7 +364,7 @@ create table if not exists public.setlist_invites (
 - Log de erro de registro melhorado no `index.html`.
 
 ### Iframe de Cifras (CifraWebviewModal)
-- Removido `allow-same-origin` do atributo `sandbox`. A combinação `allow-same-origin` + `allow-scripts` anula o isolamento do sandbox, gerando warning no console.
+- Removido `allow-same-origin` e `allow-scripts` do atributo `sandbox` do iframe de cifras. Antes: `allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation`. Depois: `allow-popups allow-forms allow-storage-access-by-user-activation`. A remoção coloca o iframe em unique origin, impedindo frame-busting via scripts do CifraClub.
 
 ### Resiliência do Root DOM
 - `main.tsx` agora verifica se o elemento `#root` existe antes de chamar `createRoot()`. Se não existir (causado por extensões como `spoofer.js` que removem o `#root` ou corrompem o contexto), o elemento é recriado antes da chamada.
@@ -424,3 +424,12 @@ create table if not exists public.setlist_invites (
 - Trigger `on_auth_user_created` para criar perfil automaticamente no registro, incluindo e-mail.
 - Migração aplicada via `supabase db push` em `supabase/migrations/20260729235009_enable_rls.sql`.
 - **Correção de Recursão Infinita (20260729235011_fix_rls_recursion.sql)**: As policies originais continham subqueries SQL diretas em tabelas com RLS, criando ciclo entre `setlists` SELECT e `setlist_members` SELECT. Todas as subqueries foram substituídas por chamadas às funções `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`), que bypassam RLS e eliminam a recursão.
+
+### CifraWebviewModal — Sandbox Corrigido
+- Removido `allow-same-origin` e `allow-scripts` do atributo `sandbox` do iframe de cifras. Antes: `allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation`. Depois: `allow-popups allow-forms allow-storage-access-by-user-activation`. A remoção coloca o iframe em unique origin, impedindo frame-busting via scripts do CifraClub.
+
+### Otimizações de Performance (Julho 2026)
+- **Parallelização de sync (`supabase.ts`)**: Block upserts e member upserts transformados de loops sequenciais para `Promise.all`, reduzindo drasticamente o tempo de sincronização.
+- **Remoção de upsert redundante de songs**: Cada música era upsertada 1x no batch + 1x por block_item que a referenciava. Removido o upsert individual (o batch já cobre todas).
+- **Filtros `.eq()` no fetch**: Adicionados filtros `user_id` nas queries de `songs` e `setlist_members`, evitando scan completo das tabelas com avaliação de RLS linha a linha.
+- **Memoização de `getCatalog()`**: `StorageEngine.getCatalog()` (que faz JSON.parse + sort a cada chamada) movido para `useMemo` em `SetlistDetail.tsx` e `FocusedBlockView.tsx`, eliminando chamadas redundantes no render loop.

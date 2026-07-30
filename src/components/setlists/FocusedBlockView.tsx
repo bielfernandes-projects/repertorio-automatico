@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { syncLocalDataToSupabase } from '../../lib/supabase';
@@ -334,7 +334,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   };
 
   // Filter Catalog
-  const allCatalog = StorageEngine.getCatalog();
+  const allCatalog = useMemo(() => StorageEngine.getCatalog(), []);
   const existingSongIds = new Set(block.items.map((i) => i.catalogSongId));
   const filteredCatalog = allCatalog.filter((s) => {
     if (!catalogSearch.trim()) return !existingSongIds.has(s.id);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { enableSetlistLinkShare } from '../../lib/supabase';
@@ -252,6 +252,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   };
 
   // Search Filtering
+  const catalog = useMemo(() => StorageEngine.getCatalog(), []);
   const filteredBlocks = setlist.blocks.filter((block) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
@@ -262,7 +263,6 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     }
 
     // Check songs inside block
-    const catalog = StorageEngine.getCatalog();
     return block.items.some((item) => {
       const song = catalog.find((s) => s.id === item.catalogSongId);
       if (!song) return false;
@@ -376,7 +376,6 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {filteredBlocks.map((block, index) => {
               const themeStyle = getThemeColorStyle(block.theme);
-              const catalog = StorageEngine.getCatalog();
 
               return (
                 <div

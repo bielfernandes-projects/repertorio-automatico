@@ -412,3 +412,14 @@ create table if not exists public.setlist_invites (
 - Removido `'unsafe-inline'` de `script-src` no `vercel.json`, eliminando a permissão genérica para execução de scripts inline.
 - Registro do Service Worker movido do `<script>` inline no `index.html` para o bundle JavaScript em `src/main.tsx`, executado no evento `load` do window.
 - `script-src` final: `'self' https://va.vercel-scripts.com` — apenas scripts do próprio domínio e Vercel Analytics são permitidos.
+
+### Row Level Security (RLS) no Supabase
+- Ativado RLS em todas as tabelas do banco (`profiles`, `songs`, `setlists`, `blocks`, `block_songs`, `setlist_members`, `setlist_invites`).
+- Criadas políticas de SELECT que permitem acesso a:
+  - **`songs`**: próprio usuário OU músicas referenciadas em setlists que o usuário tem acesso (via `block_songs` > `blocks` > `setlist_members`).
+  - **`setlists`**: próprio dono, membros do setlist, ou qualquer um com link de compartilhamento (`__link_share__`).
+  - **`blocks` / `block_songs`**: dono, membros, ou link de compartilhamento (SELECT); dono ou editor (INSERT/UPDATE/DELETE).
+  - **`profiles`**: todos os usuários autenticados podem SELECT (para resolução de e-mail); apenas o próprio usuário pode INSERT/UPDATE.
+- Criadas funções auxiliares `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`, `has_email_invite`) para reutilização nas políticas.
+- Trigger `on_auth_user_created` para criar perfil automaticamente no registro, incluindo e-mail.
+- Migração aplicada via `supabase db push` em `supabase/migrations/20260729235009_enable_rls.sql`.

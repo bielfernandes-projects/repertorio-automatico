@@ -555,13 +555,17 @@ export async function syncLocalDataToSupabase(
       .select('id')
       .eq('user_id', userIdUUID);
 
-    if (!fetchSongsErr && dbSongs) {
-      const localSongUUIDs = new Set(ownSongs.map((s) => toUUID(s.id)));
-      const songsToDelete = dbSongs.map((s: any) => s.id).filter((id: string) => !localSongUUIDs.has(id));
-      if (songsToDelete.length > 0) {
-        const { error: delErr } = await client.from('songs').delete().in('id', songsToDelete);
-        if (delErr) {
-          console.warn('[Sync] Could not delete songs (RLS policy may prevent this):', delErr.message);
+    if (!fetchSongsErr && dbSongs && dbSongs.length > 0) {
+      if (ownSongs.length === 0) {
+        console.warn('[Sync] Local songs is empty but remote has songs — skipping deletion to prevent data loss');
+      } else {
+        const localSongUUIDs = new Set(ownSongs.map((s) => toUUID(s.id)));
+        const songsToDelete = dbSongs.map((s: any) => s.id).filter((id: string) => !localSongUUIDs.has(id));
+        if (songsToDelete.length > 0) {
+          const { error: delErr } = await client.from('songs').delete().in('id', songsToDelete);
+          if (delErr) {
+            console.warn('[Sync] Could not delete songs (RLS policy may prevent this):', delErr.message);
+          }
         }
       }
     }
@@ -588,17 +592,20 @@ export async function syncLocalDataToSupabase(
       .select('id')
       .eq('user_id', userIdUUID);
 
-    if (!fetchSetlistsErr && dbSetlists) {
-      const ownSetlistUUIDs = new Set(
-        targetSetlists
-          .filter((st) => !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase())
-          .map((st) => toUUID(st.id))
+    if (!fetchSetlistsErr && dbSetlists && dbSetlists.length > 0) {
+      const ownLocalSetlists = targetSetlists.filter(
+        (st) => !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase()
       );
-      const setlistsToDelete = dbSetlists.map((s: any) => s.id).filter((id: string) => !ownSetlistUUIDs.has(id));
-      if (setlistsToDelete.length > 0) {
-        const { error: delErr } = await client.from('setlists').delete().in('id', setlistsToDelete);
-        if (delErr) {
-          console.warn('[Sync] Could not delete setlists (RLS policy may prevent this):', delErr.message);
+      if (ownLocalSetlists.length === 0) {
+        console.warn('[Sync] Local own setlists is empty but remote has setlists — skipping deletion to prevent data loss');
+      } else {
+        const ownSetlistUUIDs = new Set(ownLocalSetlists.map((st) => toUUID(st.id)));
+        const setlistsToDelete = dbSetlists.map((s: any) => s.id).filter((id: string) => !ownSetlistUUIDs.has(id));
+        if (setlistsToDelete.length > 0) {
+          const { error: delErr } = await client.from('setlists').delete().in('id', setlistsToDelete);
+          if (delErr) {
+            console.warn('[Sync] Could not delete setlists (RLS policy may prevent this):', delErr.message);
+          }
         }
       }
     }

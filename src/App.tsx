@@ -300,9 +300,13 @@ export default function App() {
 
         try {
           const { selfJoinSetlistAsMember } = await import('./lib/supabase');
-          await selfJoinSetlistAsMember(id, role);
+          const selfJoinOk = await selfJoinSetlistAsMember(id, role);
+          if (!selfJoinOk) {
+            console.warn('[Share Link] Self-join to Supabase returned false');
+            showToast('Aviso: não foi possível registrar seu acesso no servidor. Suas edições serão sincronizadas na próxima vez.', 'warning');
+          }
         } catch (err) {
-          console.error('[Share Link] selfJoinSetlistAsMember failed:', err);
+          console.error('[Share Link] selfJoinSetlistAsMember threw:', err);
         }
       } else {
         showToast('Setlist compartilhado não foi encontrado.', 'error');
@@ -395,6 +399,9 @@ export default function App() {
                   mergedSetlists[remoteIdx] = localSt;
                 } else {
                   console.log('[Merge] Remote setlist kept (equal or newer)', {setlist: localSt.name, localUpdatedAt, remoteUpdatedAt});
+                  if (localSt.members?.length) {
+                    remoteSt.members = localSt.members;
+                  }
                 }
               } else {
                 mergedSetlists.push(localSt);

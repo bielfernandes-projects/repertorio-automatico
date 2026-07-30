@@ -615,6 +615,14 @@ export async function syncLocalDataToSupabase(
         );
         if (myMembership?.role === 'edit') {
           await syncMemberEditsToSupabase(client, st, userIdUUID);
+        } else {
+          // Membership not found locally (e.g. merge overwrote it, or self-join failed).
+          // Attempt to create it and then sync block edits.
+          const joined = await selfJoinSetlistAsMember(st.id, 'edit');
+          if (joined) {
+            console.log('[Sync] Self-joined as editor for setlist:', st.id);
+            await syncMemberEditsToSupabase(client, st, userIdUUID);
+          }
         }
         continue;
       }

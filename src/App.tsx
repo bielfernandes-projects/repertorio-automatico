@@ -373,7 +373,22 @@ export default function App() {
             localSetlists.forEach((localSt) => {
               const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
               if (remoteIdx >= 0) {
-                if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
+                const remoteSt = mergedSetlists[remoteIdx];
+                if ((localSt.updatedAt || localSt.createdAt) > (remoteSt.updatedAt || remoteSt.createdAt)) {
+                  if (remoteSt.blocks) {
+                    localSt.blocks?.forEach((localBlock) => {
+                      const remoteBlock = remoteSt.blocks.find((b) => b.id === localBlock.id);
+                      if (remoteBlock) {
+                        localBlock.items?.forEach((localItem) => {
+                          const remoteItem = remoteBlock.items?.find((i) => i.catalogSongId === localItem.catalogSongId);
+                          if (remoteItem) {
+                            if (!localItem.notes && remoteItem.notes) localItem.notes = remoteItem.notes;
+                            if (!localItem.requestedKey && remoteItem.requestedKey) localItem.requestedKey = remoteItem.requestedKey;
+                          }
+                        });
+                      }
+                    });
+                  }
                   mergedSetlists[remoteIdx] = localSt;
                 }
               } else {

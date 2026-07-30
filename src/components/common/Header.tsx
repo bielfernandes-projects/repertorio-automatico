@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { ArrowLeft, Music, Share2, Plus } from 'lucide-react';
+import { ArrowLeft, Music, Share2, Plus, RotateCw } from 'lucide-react';
 
 interface HeaderProps {
   onOpenInviteModal?: () => void;
@@ -16,6 +16,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
     focusedBlockId,
     setFocusedBlockId
   } = useAppStore();
+
+  const handleHardRefresh = async () => {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    }
+    window.location.reload();
+  };
 
   const setlist = activeSetlistId ? StorageEngine.getSetlistById(activeSetlistId) : null;
   const focusedBlock = setlist && focusedBlockId ? setlist.blocks.find((b) => b.id === focusedBlockId) : null;
@@ -32,9 +40,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Voltar ao setlist</span>
         </button>
-        <div className="text-right truncate max-w-[200px] sm:max-w-xs">
-          <span className="text-[10px] text-zinc-400 dark:text-purple-300/60 uppercase tracking-wider font-medium block">Bloco Focado</span>
-          <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate block">{focusedBlock.name}</span>
+        <div className="flex items-center gap-2">
+          <div className="text-right truncate max-w-[200px] sm:max-w-xs">
+            <span className="text-[10px] text-zinc-400 dark:text-purple-300/60 uppercase tracking-wider font-medium block">Bloco Focado</span>
+            <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 truncate block">{focusedBlock.name}</span>
+          </div>
+          <button
+            onClick={handleHardRefresh}
+            className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-lg transition-colors active:scale-95"
+            title="Recarregar aplicação"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
         </div>
       </header>
     );
@@ -88,6 +105,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
               <span>Bloco</span>
             </button>
           )}
+
+          <button
+            onClick={handleHardRefresh}
+            className="p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-lg transition-colors active:scale-95"
+            title="Recarregar aplicação"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
         </div>
       </header>
     );
@@ -113,6 +138,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBloc
       </div>
 
       <div className="flex items-center gap-1">
+        <button
+          onClick={handleHardRefresh}
+          className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 rounded-lg transition-colors active:scale-95"
+          title="Recarregar aplicação"
+        >
+          <RotateCw className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

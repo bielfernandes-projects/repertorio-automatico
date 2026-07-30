@@ -1,20 +1,49 @@
 -- =====================================================
--- HELPER FUNCTIONS (SECURITY DEFINER — bypass RLS)
+-- CORREÇÃO: substituir subqueries raw por SECURITY DEFINER
+-- nas policies para quebrar ciclo de recursão infinita
+-- entre setlists SELECT ↔ setlist_members SELECT
 -- =====================================================
 
+-- Helper functions já existem (mesmas). Drop com cascade
+-- remove todas as policies que as referenciam.
 drop function if exists public.is_setlist_owner(uuid, uuid) cascade;
 drop function if exists public.is_setlist_member(uuid, uuid) cascade;
 drop function if exists public.is_setlist_editor(uuid, uuid) cascade;
 drop function if exists public.has_link_share(uuid) cascade;
 drop function if exists public.has_email_invite(uuid, text) cascade;
 
+-- Drop policies que NÃO referenciam helpers (para recriar tudo limpo)
+drop policy if exists "users_select_own_profile" on public.profiles;
+drop policy if exists "users_select_all_profiles" on public.profiles;
+drop policy if exists "users_update_own_profile" on public.profiles;
+drop policy if exists "users_insert_own_profile" on public.profiles;
+drop policy if exists "users_select_own_songs" on public.songs;
+drop policy if exists "songs_select_shared" on public.songs;
+drop policy if exists "users_insert_own_songs" on public.songs;
+drop policy if exists "users_update_own_songs" on public.songs;
+drop policy if exists "users_delete_own_songs" on public.songs;
+drop policy if exists "users_insert_own_setlists" on public.setlists;
+drop policy if exists "users_update_own_setlists" on public.setlists;
+drop policy if exists "users_delete_own_setlists" on public.setlists;
+drop policy if exists "users_select_setlist_members" on public.setlist_members;
+drop policy if exists "owner_insert_setlist_members" on public.setlist_members;
+drop policy if exists "owner_update_setlist_members" on public.setlist_members;
+drop policy if exists "owner_delete_setlist_members" on public.setlist_members;
+drop policy if exists "users_see_own_invites" on public.setlist_invites;
+drop policy if exists "owner_create_invite" on public.setlist_invites;
+drop policy if exists "owner_update_invite" on public.setlist_invites;
+drop policy if exists "owner_delete_invite" on public.setlist_invites;
+
+-- =====================================================
+-- RECRIA HELPER FUNCTIONS (SECURITY DEFINER)
+-- =====================================================
+
 create or replace function public.is_setlist_owner(setlist_uuid uuid, user_uuid uuid)
 returns boolean as $$
 begin
   return exists (
     select 1 from public.setlists
-    where id = setlist_uuid
-    and user_id = user_uuid
+    where id = setlist_uuid and user_id = user_uuid
   );
 end;
 $$ language plpgsql security definer;
@@ -24,8 +53,7 @@ returns boolean as $$
 begin
   return exists (
     select 1 from public.setlist_members
-    where setlist_id = setlist_uuid
-    and user_id = user_uuid
+    where setlist_id = setlist_uuid and user_id = user_uuid
   );
 end;
 $$ language plpgsql security definer;
@@ -39,8 +67,8 @@ begin
   return exists (
     select 1 from public.setlist_members
     where setlist_id = setlist_uuid
-    and user_id = user_uuid
-    and role in ('owner', 'editor')
+      and user_id = user_uuid
+      and role in ('owner', 'editor')
   );
 end;
 $$ language plpgsql security definer;
@@ -50,8 +78,7 @@ returns boolean as $$
 begin
   return exists (
     select 1 from public.setlist_invites
-    where setlist_id = setlist_uuid
-    and invitee_email = '__link_share__'
+    where setlist_id = setlist_uuid and invitee_email = '__link_share__'
   );
 end;
 $$ language plpgsql security definer;
@@ -65,58 +92,38 @@ begin
   return exists (
     select 1 from public.setlist_invites
     where setlist_id = setlist_uuid
-    and lower(invitee_email) = lower(user_email)
+      and lower(invitee_email) = lower(user_email)
   );
 end;
 $$ language plpgsql security definer;
 
 -- =====================================================
--- ATIVAR RLS EM TODAS AS TABELAS
+-- RECRIA TODAS AS POLICIES (CORRIGIDAS)
 -- =====================================================
 
-alter table public.profiles enable row level security;
-alter table public.songs enable row level security;
-alter table public.setlists enable row level security;
-alter table public.blocks enable row level security;
-alter table public.block_songs enable row level security;
-alter table public.setlist_members enable row level security;
-alter table public.setlist_invites enable row level security;
-
--- =====================================================
--- POLÍTICAS: profiles
--- =====================================================
-
-drop policy if exists "users_select_own_profile" on public.profiles;
+-- profiles
 create policy "users_select_own_profile"
   on public.profiles for select
   using (auth.uid() = id);
 
-drop policy if exists "users_select_all_profiles" on public.profiles;
 create policy "users_select_all_profiles"
   on public.profiles for select
   to authenticated
   using (true);
 
-drop policy if exists "users_update_own_profile" on public.profiles;
 create policy "users_update_own_profile"
   on public.profiles for update
   using (auth.uid() = id);
 
-drop policy if exists "users_insert_own_profile" on public.profiles;
 create policy "users_insert_own_profile"
   on public.profiles for insert
   with check (auth.uid() = id);
 
--- =====================================================
--- POLÍTICAS: songs (catálogo)
--- =====================================================
-
-drop policy if exists "users_select_own_songs" on public.songs;
+-- songs
 create policy "users_select_own_songs"
   on public.songs for select
   using (auth.uid() = user_id);
 
-drop policy if exists "songs_select_shared" on public.songs;
 create policy "songs_select_shared"
   on public.songs for select
   to authenticated
@@ -132,26 +139,19 @@ create policy "songs_select_shared"
     )
   );
 
-drop policy if exists "users_insert_own_songs" on public.songs;
 create policy "users_insert_own_songs"
   on public.songs for insert
   with check (auth.uid() = user_id);
 
-drop policy if exists "users_update_own_songs" on public.songs;
 create policy "users_update_own_songs"
   on public.songs for update
   using (auth.uid() = user_id);
 
-drop policy if exists "users_delete_own_songs" on public.songs;
 create policy "users_delete_own_songs"
   on public.songs for delete
   using (auth.uid() = user_id);
 
--- =====================================================
--- POLÍTICAS: setlists
--- =====================================================
-
-drop policy if exists "users_select_setlists" on public.setlists;
+-- setlists
 create policy "users_select_setlists"
   on public.setlists for select
   using (
@@ -160,26 +160,19 @@ create policy "users_select_setlists"
     or public.has_link_share(id)
   );
 
-drop policy if exists "users_insert_own_setlists" on public.setlists;
 create policy "users_insert_own_setlists"
   on public.setlists for insert
   with check (auth.uid() = user_id);
 
-drop policy if exists "users_update_own_setlists" on public.setlists;
 create policy "users_update_own_setlists"
   on public.setlists for update
   using (auth.uid() = user_id);
 
-drop policy if exists "users_delete_own_setlists" on public.setlists;
 create policy "users_delete_own_setlists"
   on public.setlists for delete
   using (auth.uid() = user_id);
 
--- =====================================================
--- POLÍTICAS: blocks
--- =====================================================
-
-drop policy if exists "users_select_blocks" on public.blocks;
+-- blocks
 create policy "users_select_blocks"
   on public.blocks for select
   using (
@@ -188,32 +181,25 @@ create policy "users_select_blocks"
     or public.has_link_share(setlist_id)
   );
 
-drop policy if exists "users_insert_blocks" on public.blocks;
 create policy "users_insert_blocks"
   on public.blocks for insert
   with check (
     public.is_setlist_editor(setlist_id, auth.uid())
   );
 
-drop policy if exists "users_update_blocks" on public.blocks;
 create policy "users_update_blocks"
   on public.blocks for update
   using (
     public.is_setlist_editor(setlist_id, auth.uid())
   );
 
-drop policy if exists "users_delete_blocks" on public.blocks;
 create policy "users_delete_blocks"
   on public.blocks for delete
   using (
     public.is_setlist_editor(setlist_id, auth.uid())
   );
 
--- =====================================================
--- POLÍTICAS: block_songs
--- =====================================================
-
-drop policy if exists "users_select_block_songs" on public.block_songs;
+-- block_songs
 create policy "users_select_block_songs"
   on public.block_songs for select
   using (
@@ -228,7 +214,6 @@ create policy "users_select_block_songs"
     )
   );
 
-drop policy if exists "users_insert_block_songs" on public.block_songs;
 create policy "users_insert_block_songs"
   on public.block_songs for insert
   with check (
@@ -238,7 +223,6 @@ create policy "users_insert_block_songs"
     )
   );
 
-drop policy if exists "users_update_block_songs" on public.block_songs;
 create policy "users_update_block_songs"
   on public.block_songs for update
   using (
@@ -248,7 +232,6 @@ create policy "users_update_block_songs"
     )
   );
 
-drop policy if exists "users_delete_block_songs" on public.block_songs;
 create policy "users_delete_block_songs"
   on public.block_songs for delete
   using (
@@ -258,11 +241,7 @@ create policy "users_delete_block_songs"
     )
   );
 
--- =====================================================
--- POLÍTICAS: setlist_members
--- =====================================================
-
-drop policy if exists "users_select_setlist_members" on public.setlist_members;
+-- setlist_members
 create policy "users_select_setlist_members"
   on public.setlist_members for select
   using (
@@ -270,7 +249,6 @@ create policy "users_select_setlist_members"
     or public.is_setlist_owner(setlist_id, auth.uid())
   );
 
-drop policy if exists "owner_insert_setlist_members" on public.setlist_members;
 create policy "owner_insert_setlist_members"
   on public.setlist_members for insert
   with check (
@@ -278,25 +256,19 @@ create policy "owner_insert_setlist_members"
     or user_id = auth.uid()
   );
 
-drop policy if exists "owner_update_setlist_members" on public.setlist_members;
 create policy "owner_update_setlist_members"
   on public.setlist_members for update
   using (
     public.is_setlist_owner(setlist_id, auth.uid())
   );
 
-drop policy if exists "owner_delete_setlist_members" on public.setlist_members;
 create policy "owner_delete_setlist_members"
   on public.setlist_members for delete
   using (
     public.is_setlist_owner(setlist_id, auth.uid())
   );
 
--- =====================================================
--- POLÍTICAS: setlist_invites
--- =====================================================
-
-drop policy if exists "users_see_own_invites" on public.setlist_invites;
+-- setlist_invites
 create policy "users_see_own_invites"
   on public.setlist_invites for select
   using (
@@ -308,46 +280,20 @@ create policy "users_see_own_invites"
     ))
   );
 
-drop policy if exists "owner_create_invite" on public.setlist_invites;
 create policy "owner_create_invite"
   on public.setlist_invites for insert
   with check (
     public.is_setlist_owner(setlist_id, auth.uid())
   );
 
-drop policy if exists "owner_update_invite" on public.setlist_invites;
 create policy "owner_update_invite"
   on public.setlist_invites for update
   using (
     public.is_setlist_owner(setlist_id, auth.uid())
   );
 
-drop policy if exists "owner_delete_invite" on public.setlist_invites;
 create policy "owner_delete_invite"
   on public.setlist_invites for delete
   using (
     public.is_setlist_owner(setlist_id, auth.uid())
   );
-
--- =====================================================
--- TRIGGER: auto-criar profile ao criar usuário
--- =====================================================
-
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, display_name, email)
-  values (
-    new.id,
-    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
-    new.email
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();

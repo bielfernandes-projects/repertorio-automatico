@@ -423,3 +423,4 @@ create table if not exists public.setlist_invites (
 - Criadas funções auxiliares `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`, `has_email_invite`) para reutilização nas políticas.
 - Trigger `on_auth_user_created` para criar perfil automaticamente no registro, incluindo e-mail.
 - Migração aplicada via `supabase db push` em `supabase/migrations/20260729235009_enable_rls.sql`.
+- **Correção de Recursão Infinita (20260729235011_fix_rls_recursion.sql)**: As policies originais continham subqueries SQL diretas em tabelas com RLS, criando ciclo entre `setlists` SELECT e `setlist_members` SELECT. Todas as subqueries foram substituídas por chamadas às funções `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`), que bypassam RLS e eliminam a recursão.

@@ -3,10 +3,10 @@ import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { syncWithToast } from '../../lib/supabase';
 import { Block, BlockItem, CatalogSong } from '../../types';
-import { buildCifraClubUrl } from '../../lib/utils';
+import { buildCifraClubUrl, normalizeKeyDisplay, extractKeyOptions } from '../../lib/utils';
 import { Modal } from '../common/Modal';
 import { SongDocumentsModal } from '../common/SongDocumentsModal';
-import { Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Search, Edit2, Check, Music, X } from 'lucide-react';
+import { Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Search, Edit2, Check, Music, X, Filter, ChevronDown } from 'lucide-react';
 
 interface FocusedBlockViewProps {
   setlistId: string;
@@ -158,6 +158,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   // Add song modal state
   const [isAddSongOpen, setIsAddSongOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogKeyFilter, setCatalogKeyFilter] = useState('');
   const [newSongNotes, setNewSongNotes] = useState('');
 
   // Quick create catalog song inside modal state
@@ -292,6 +293,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     showToast(`"${song.name}" adicionada ao bloco!`, 'success');
     setIsAddSongOpen(false);
     setCatalogSearch('');
+    setCatalogKeyFilter('');
     setNewSongNotes('');
   };
 
@@ -328,6 +330,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
 
     setIsAddSongOpen(false);
     setCatalogSearch('');
+    setCatalogKeyFilter('');
     setNewSongName('');
     setNewSongArtist('');
     setNewSongKey('');
@@ -338,13 +341,13 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   const catalogRevision = StorageEngine.getCatalogRevision();
   const allCatalog = useMemo(() => StorageEngine.getCatalog(), [catalogRevision]);
   const existingSongIds = new Set(block.items.map((i) => i.catalogSongId));
+  const keyOptions = useMemo(() => extractKeyOptions(allCatalog.map((s) => s.originalKey)), [allCatalog]);
   const filteredCatalog = allCatalog.filter((s) => {
-    if (!catalogSearch.trim()) return !existingSongIds.has(s.id);
+    if (existingSongIds.has(s.id)) return false;
+    if (catalogKeyFilter && normalizeKeyDisplay(s.originalKey) !== catalogKeyFilter) return false;
+    if (!catalogSearch.trim()) return true;
     const query = catalogSearch.toLowerCase();
-    return (
-      !existingSongIds.has(s.id) &&
-      (s.name.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query))
-    );
+    return s.name.toLowerCase().includes(query) || s.artist.toLowerCase().includes(query);
   });
 
   return (
@@ -549,6 +552,23 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
               placeholder="Buscar no seu catálogo..."
               className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
             />
+          </div>
+
+          {/* Key filter */}
+          <div className="relative">
+            <Filter className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <select
+              value={catalogKeyFilter}
+              onChange={(e) => setCatalogKeyFilter(e.target.value)}
+              className="w-full appearance-none bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 cursor-pointer"
+              title="Filtrar por tom"
+            >
+              <option value="">Todos os tons</option>
+              {keyOptions.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
           {/* Observação Input */}

@@ -119,6 +119,25 @@ export function computeSemitoneShift(originalKey?: string, requestedKey?: string
   return shift;
 }
 
+// Distinct normalized key options (e.g. catalog tom filter), musically sorted (majors, then minors)
+export function extractKeyOptions(originalKeys: string[]): string[] {
+  const seen = new Set<string>();
+  const options: { key: string; order: number }[] = [];
+
+  originalKeys.forEach((k) => {
+    const normalized = normalizeKeyDisplay(k);
+    if (!normalized) return;
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+
+    const parsed = parseRootNoteIndex(normalized);
+    const order = parsed ? parsed.index + (parsed.isMinor ? 12 : 0) : 24;
+    options.push({ key: normalized, order });
+  });
+
+  return options.sort((a, b) => a.order - b.order || a.key.localeCompare(b.key)).map((o) => o.key);
+}
+
 // Parse full Cifra Club URL to extract artist/song slugs
 export function parseCifraClubUrl(urlOrSlug: string): string {
   let clean = urlOrSlug.trim();

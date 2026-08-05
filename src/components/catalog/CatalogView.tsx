@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
 import { CatalogSong, SongDocument } from '../../types';
@@ -16,9 +16,11 @@ import {
   Paperclip,
   Upload,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Filter,
+  ChevronDown
 } from 'lucide-react';
-import { buildCifraClubUrl, parseCifraClubUrl } from '../../lib/utils';
+import { buildCifraClubUrl, parseCifraClubUrl, normalizeKeyDisplay, extractKeyOptions } from '../../lib/utils';
 import { isAllowedFileType } from '../../lib/sanitize';
 
 export const CatalogView: React.FC = () => {
@@ -27,6 +29,7 @@ export const CatalogView: React.FC = () => {
   const openCifraModal = useAppStore((s) => s.openCifraModal);
   const [catalog, setCatalog] = useState<CatalogSong[]>(() => StorageEngine.getCatalog());
   const [search, setSearch] = useState('');
+  const [keyFilter, setKeyFilter] = useState('');
 
   // Documents Modal State
   const [docsModalSong, setDocsModalSong] = useState<CatalogSong | null>(null);
@@ -164,7 +167,10 @@ export const CatalogView: React.FC = () => {
   };
 
   // Filter Search
+  const keyOptions = useMemo(() => extractKeyOptions(catalog.map((s) => s.originalKey)), [catalog]);
   const filteredCatalog = catalog.filter((song) => {
+    if (!search.trim() && !keyFilter) return true;
+    if (keyFilter && normalizeKeyDisplay(song.originalKey) !== keyFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return song.name.toLowerCase().includes(q) || song.artist.toLowerCase().includes(q);
@@ -207,6 +213,23 @@ export const CatalogView: React.FC = () => {
             <X className="w-3.5 h-3.5" />
           </button>
         )}
+      </div>
+
+      {/* Key filter */}
+      <div className="relative">
+        <Filter className="w-4 h-4 text-zinc-400 dark:text-purple-400/60 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <select
+          value={keyFilter}
+          onChange={(e) => setKeyFilter(e.target.value)}
+          className="w-full appearance-none bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 focus:border-purple-600 dark:focus:border-purple-500 rounded-xl pl-9 pr-8 py-2.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none transition-colors cursor-pointer"
+          title="Filtrar por tom"
+        >
+          <option value="">Todos os tons</option>
+          {keyOptions.map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
+        <ChevronDown className="w-4 h-4 text-zinc-400 dark:text-purple-400/60 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
       </div>
 
       {/* List of catalog songs */}

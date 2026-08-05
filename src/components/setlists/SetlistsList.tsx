@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { syncLocalDataToSupabase } from '../../lib/supabase';
+import { syncWithToast } from '../../lib/supabase';
 import { Setlist } from '../../types';
 import { Modal } from '../common/Modal';
-import { Plus, ListMusic, Copy, Trash2, ChevronRight, Users, Sparkles, Share2 } from 'lucide-react';
+import { Plus, ListMusic, Copy, Trash2, Users, Sparkles, Share2 } from 'lucide-react';
 
 interface SetlistCardProps {
   setlist: Setlist;
@@ -21,7 +21,7 @@ const SetlistCard: React.FC<SetlistCardProps> = ({
   onDuplicate,
   onDelete
 }) => {
-  const { setActiveSetlistId } = useAppStore();
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
   const totalSongs = setlist.blocks.reduce((acc, b) => acc + b.items.length, 0);
 
   return (
@@ -94,15 +94,15 @@ const SetlistCard: React.FC<SetlistCardProps> = ({
             <Share2 className="w-4 h-4" />
           </button>
         )}
-
-        <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-purple-400/60 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors ml-1" />
       </div>
     </div>
   );
 };
 
 export const SetlistsList: React.FC = () => {
-  const { setActiveSetlistId, showToast, showCascadeWarning } = useAppStore();
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
+  const showToast = useAppStore((s) => s.showToast);
+  const showCascadeWarning = useAppStore((s) => s.showCascadeWarning);
   const currentUser = StorageEngine.getUser();
   const [setlists, setSetlists] = useState<Setlist[]>(() =>
     StorageEngine.getSetlistsForUser(currentUser.email)
@@ -136,9 +136,7 @@ export const SetlistsList: React.FC = () => {
     setNewSetName('');
     reloadSetlists();
     showToast(`Setlist "${created.name}" criado!`, 'success');
-    if (StorageEngine.getSupabaseConfig().isConnected) {
-      await syncLocalDataToSupabase();
-    }
+    await syncWithToast(showToast);
     setActiveSetlistId(created.id);
   };
 
@@ -157,9 +155,7 @@ export const SetlistsList: React.FC = () => {
     reloadSetlists();
     if (copy) {
       showToast(`Setlist duplicado como "${copy.name}"!`, 'success');
-      if (StorageEngine.getSupabaseConfig().isConnected) {
-        await syncLocalDataToSupabase();
-      }
+      await syncWithToast(showToast);
     }
   };
 
@@ -175,9 +171,7 @@ export const SetlistsList: React.FC = () => {
         StorageEngine.deleteSetlist(setlist.id);
         reloadSetlists();
         showToast(`Setlist "${setlist.name}" excluído.`, 'info');
-        if (StorageEngine.getSupabaseConfig().isConnected) {
-          await syncLocalDataToSupabase();
-        }
+        await syncWithToast(showToast);
       }
     });
   };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { syncLocalDataToSupabase, getSupabaseClient, fetchSetlistMembers } from '../../lib/supabase';
+import { getSupabaseClient, fetchSetlistMembers, getSupabaseConfig, syncWithToast } from '../../lib/supabase';
 import { Setlist, SetlistMember } from '../../types';
 import { Modal } from '../common/Modal';
 
@@ -19,9 +19,7 @@ import {
   Sun,
   Download,
   LogOut,
-  ShieldCheck,
   Send,
-  Trash2,
   KeyRound,
   Lock,
   Eye,
@@ -29,22 +27,24 @@ import {
   Share2,
   Copy,
   Sparkles,
-  Users,
   Edit3,
   Check,
   X,
   Camera,
   Smartphone,
-  Monitor,
-  Shield
+  Monitor
 } from 'lucide-react';
+import { MembersManager } from '../common/MembersManager';
 
 interface ProfileViewProps {
   onLogout: () => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
-  const { isDarkMode, toggleDarkMode, showToast, showCascadeWarning } = useAppStore();
+  const isDarkMode = useAppStore((s) => s.isDarkMode);
+  const toggleDarkMode = useAppStore((s) => s.toggleDarkMode);
+  const showToast = useAppStore((s) => s.showToast);
+  const showCascadeWarning = useAppStore((s) => s.showCascadeWarning);
   const user = StorageEngine.getUser();
 
   // Edit Name state
@@ -171,7 +171,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
   // Fetch setlist members when share modal opens or setlist selection changes
   useEffect(() => {
     if (!isShareModalOpen || !selectedSetlistId) return;
-    const cfg = StorageEngine.getSupabaseConfig();
+    const cfg = getSupabaseConfig();
     if (!cfg.isConnected) return;
 
     setIsFetchingMembers(true);
@@ -261,9 +261,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
       affectedSetlistsCount: 0,
       onConfirm: async () => {
         StorageEngine.revokeInvitation(selectedSetlistId, email);
-        if (StorageEngine.getSupabaseConfig().isConnected) {
-          await syncLocalDataToSupabase(undefined, StorageEngine.getSetlists());
-        }
+        await syncWithToast(showToast, StorageEngine.getSetlists());
         showToast('Convite revogado.', 'info');
       }
     });
@@ -643,50 +641,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
             const activeShareSetlist = userSetlists.find((s) => s.id === selectedSetlistId);
             if (!activeShareSetlist) return null;
             return (
-              <div className="space-y-2 mt-4 pt-4 border-t border-zinc-100 dark:border-purple-900/30">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
-                    Acessos do Setlist ({activeShareSetlist.members.length + 1})
-                  </h4>
-                  {isFetchingMembers && (
-                    <span className="text-[10px] text-purple-400 animate-pulse">Atualizando...</span>
-                  )}
-                </div>
-
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {/* Owner */}
-                  <div className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100 block">
-                        {activeShareSetlist.ownerDisplayName || activeShareSetlist.ownerEmail}
-                      </span>
-                      <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-1 font-semibold">
-                        <Shield className="w-3 h-3" />
-                        Dono do Setlist
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Members who joined via link */}
-                  {activeShareSetlist.members.map((m) => (
-                    <div key={m.id} className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
-                      <div>
-                        <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{m.email}</span>
-                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                          Entrou via Link • <strong className="text-emerald-600 dark:text-emerald-400">Acesso Concedido</strong>
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => handleRevoke(m.email)}
-                        className="p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                        title="Revogar Acesso"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-purple-900/30">
+                <MembersManager
+                  ownerName={activeShareSetlist.ownerDisplayName || ''}
+                  ownerEmail={activeShareSetlist.ownerEmail}
+                  members={activeShareSetlist.members}
+                  isFetching={isFetchingMembers}
+                  canRevoke
+                  onRevoke={handleRevoke}
+                />
               </div>
             );
           })()}

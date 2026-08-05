@@ -3,12 +3,10 @@ import { useAppStore } from '../../lib/store';
 import { ListMusic, Music, User } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
-  const {
-    activeTab,
-    setActiveTab,
-    focusedBlockId,
-    setActiveSetlistId
-  } = useAppStore();
+  const activeTab = useAppStore((s) => s.activeTab);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const focusedBlockId = useAppStore((s) => s.focusedBlockId);
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
 
   // Hide bottom nav in focused block view (immersive mode)
   if (focusedBlockId) return null;

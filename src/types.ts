@@ -1,6 +1,6 @@
 export type Role = 'owner' | 'edit' | 'view';
 
-export type InvitationStatus = 'pending' | 'accepted' | 'refused';
+export type InvitationStatus = 'pending' | 'accepted' | 'declined';
 
 export interface UserProfile {
   id: string;
@@ -82,17 +82,6 @@ export interface Setlist {
   members: SetlistMember[];
 }
 
-export interface Invitation {
-  id: string;
-  setlistId: string;
-  setlistName: string;
-  ownerEmail: string;
-  invitedEmail: string;
-  role: 'edit' | 'view';
-  status: InvitationStatus;
-  createdAt: string;
-}
-
 export interface ToastMessage {
   id: string;
   message: string;
@@ -111,4 +100,17 @@ export interface CascadeWarning {
   title: string;
   description: string;
   onConfirm: () => void;
+}
+
+export type DeletionEntityType = 'song' | 'setlist' | 'block' | 'block_song';
+
+// Tombstone de exclusão. Elimina a dependência de "delete por ausência":
+// um item só é removido do banco/merge se existir um tombstone explícito.
+export interface DeletionRecord {
+  id: string; // deterministic local key: `deleted_${entityType}_${entityId}`
+  entityType: DeletionEntityType;
+  entityId: string; // id local da entidade (ex: 'song_01' ou uuid)
+  userId: string; // dono da exclusão (quem apagou)
+  setlistId?: string; // setlist relacionado (blocos e músicas de bloco)
+  createdAt: string;
 }

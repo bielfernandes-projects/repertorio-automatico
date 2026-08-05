@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { syncLocalDataToSupabase } from '../../lib/supabase';
+import { syncWithToast } from '../../lib/supabase';
 import { Block, BlockItem, CatalogSong } from '../../types';
 import { buildCifraClubUrl } from '../../lib/utils';
 import { Modal } from '../common/Modal';
 import { SongDocumentsModal } from '../common/SongDocumentsModal';
-import { ArrowLeft, Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Search, Edit2, Check, Music, X } from 'lucide-react';
+import { Globe, FileMusic, Plus, Trash2, ArrowUp, ArrowDown, AlertCircle, AlertTriangle, Search, Edit2, Check, Music, X } from 'lucide-react';
 
 interface FocusedBlockViewProps {
   setlistId: string;
@@ -128,7 +128,9 @@ const ItemActionButtons: React.FC<{
 );
 
 export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, blockId }) => {
-  const { setFocusedBlockId, openCifraModal, showToast } = useAppStore();
+  const setFocusedBlockId = useAppStore((s) => s.setFocusedBlockId);
+  const openCifraModal = useAppStore((s) => s.openCifraModal);
+  const showToast = useAppStore((s) => s.showToast);
 
   const [setlist, setSetlist] = useState(() => StorageEngine.getSetlistById(setlistId));
   const [block, setBlock] = useState<Block | undefined>(() =>
@@ -166,8 +168,10 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   // Song Documents modal state
   const [docsModalSong, setDocsModalSong] = useState<CatalogSong | null>(null);
 
-  // Dismissed warning badges state
-  const [dismissedWarnings, setDismissedWarnings] = useState<Record<string, boolean>>({});
+  // Avisos de "tom original mudou" descartados (persistidos por música + tom vigente)
+  const [dismissedKeyWarnings, setDismissedKeyWarnings] = useState<Record<string, string>>(() =>
+    StorageEngine.getDismissedKeyWarnings()
+  );
 
   // Duplicate song warning across blocks
   const [duplicateWarning, setDuplicateWarning] = useState<{
@@ -175,8 +179,10 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
     existingBlocks: Block[];
   } | null>(null);
 
-  const handleDismissWarning = (itemId: string) => {
-    setDismissedWarnings((prev) => ({ ...prev, [itemId]: true }));
+  const handleDismissWarning = (item: BlockItem) => {
+    const currentKey = item.songOriginalKey || '';
+    setDismissedKeyWarnings((prev) => ({ ...prev, [item.catalogSongId]: currentKey }));
+    StorageEngine.dismissKeyWarning(item.catalogSongId, currentKey);
   };
 
   if (!setlist || !block) {
@@ -194,12 +200,7 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   }
 
   const triggerSync = async () => {
-    if (StorageEngine.getSupabaseConfig().isConnected) {
-      const result = await syncLocalDataToSupabase();
-      if (!result.success) {
-        showToast(`Erro ao sincronizar: ${result.message}`, 'error');
-      }
-    }
+    await syncWithToast(showToast);
   };
 
   const hydratedItems = StorageEngine.hydrateBlockItems(block.items);
@@ -334,7 +335,8 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
   };
 
   // Filter Catalog
-  const allCatalog = useMemo(() => StorageEngine.getCatalog(), []);
+  const catalogRevision = StorageEngine.getCatalogRevision();
+  const allCatalog = useMemo(() => StorageEngine.getCatalog(), [catalogRevision]);
   const existingSongIds = new Set(block.items.map((i) => i.catalogSongId));
   const filteredCatalog = allCatalog.filter((s) => {
     if (!catalogSearch.trim()) return !existingSongIds.has(s.id);
@@ -499,14 +501,14 @@ export const FocusedBlockView: React.FC<FocusedBlockViewProps> = ({ setlistId, b
                 </div>
 
                 {/* Badge if catalog original key was changed after assignment */}
-                {originalKeyChanged && !dismissedWarnings[item.id] && (
+                {originalKeyChanged && dismissedKeyWarnings[item.catalogSongId] !== item.songOriginalKey && (
                   <div className="bg-amber-950/40 border border-amber-800/50 rounded-xl p-2 text-[10px] text-amber-300 flex items-center justify-between gap-1.5 mt-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                       <span className="truncate">Tom original mudou no catálogo; confira o tom solicitado se necessário.</span>
                     </div>
                     <button
-                      onClick={() => handleDismissWarning(item.id)}
+                      onClick={() => handleDismissWarning(item)}
                       className="p-1 hover:bg-amber-900/50 text-amber-400 hover:text-amber-200 rounded-lg transition-colors shrink-0"
                       title="Fechar aviso"
                     >

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { ArrowLeft, Music, Share2, Plus, RotateCw } from 'lucide-react';
+import { ArrowLeft, Share2, Plus, RotateCw } from 'lucide-react';
 
 interface HeaderProps {
   onOpenInviteModal?: () => void;
@@ -9,13 +9,11 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenInviteModal, onOpenAddBlockModal }) => {
-  const {
-    activeTab,
-    activeSetlistId,
-    setActiveSetlistId,
-    focusedBlockId,
-    setFocusedBlockId
-  } = useAppStore();
+  const activeTab = useAppStore((s) => s.activeTab);
+  const activeSetlistId = useAppStore((s) => s.activeSetlistId);
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
+  const focusedBlockId = useAppStore((s) => s.focusedBlockId);
+  const setFocusedBlockId = useAppStore((s) => s.setFocusedBlockId);
 
   const handleHardRefresh = async () => {
     if ('serviceWorker' in navigator) {

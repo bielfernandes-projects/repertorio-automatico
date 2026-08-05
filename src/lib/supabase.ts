@@ -1,6 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SupabaseConfig, CatalogSong, Setlist, Block, BlockItem, SetlistMember } from '../types';
+import { SupabaseConfig, CatalogSong, Setlist, Block, BlockItem, SetlistMember, DeletionRecord } from '../types';
 import { StorageEngine, markExplicitSync } from './storage';
+import { toUUID, songDocsFingerprint } from './ids';
+import { hasTombstone } from './merge';
+import { buildSyncPlan } from './sync/plan';
+import { SupabaseAdapter } from './sync/supabase-adapter';
+export { toUUID }; // keep existing imports working (ProfileView, etc.)
 
 function isValidHttpUrl(urlStr: string): boolean {
   if (!urlStr) return false;
@@ -28,6 +33,36 @@ export function getSupabaseConfig(): SupabaseConfig {
 
 let supabaseClientInstance: SupabaseClient | null = null;
 
+// Estado de sincronização de documentos (delta-sync).
+//
+// O campo `documents` de uma música carrega base64 (até 10MB por arquivo).
+// Subir esse payload em todo sync é caro. Guardamos um fingerprint leve por
+// música (id/nome/tipo/tamanho/createdAt — nunca o dataUrl) em
+// `repertorio_sync_state_v1`. Se o fingerprint não mudou desde o último sync,
+// o upsert OMITE o campo `documents`, e o Supabase preserva os docs da nuvem.
+// Futuro: migrar docs para blob store (supabase.storage / IndexedDB) em vez de
+// base64 inline — ver CONTEXT.md.
+const SYNC_STATE_KEY = 'repertorio_sync_state_v1';
+
+function getSyncedDocFingerprints(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(SYNC_STATE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSyncedDocFingerprint(songId: string, fingerprint: string) {
+  try {
+    const state = getSyncedDocFingerprints();
+    state[songId] = fingerprint;
+    localStorage.setItem(SYNC_STATE_KEY, JSON.stringify(state));
+  } catch {
+    // Armazenamento indisponível — no-op, próximo sync re-sobe os docs.
+  }
+}
+
 export function getSupabaseClient(): SupabaseClient | null {
   const config = getSupabaseConfig();
   if (!config.isConnected || !config.url || !config.anonKey) return null;
@@ -40,74 +75,6 @@ export function getSupabaseClient(): SupabaseClient | null {
     }
   }
   return supabaseClientInstance;
-}
-
-export function resetSupabaseClient() {
-  supabaseClientInstance = null;
-}
-
-/**
- * Converts arbitrary string IDs to a valid RFC-4122 UUID v4 string deterministically
- * so Postgres uuid columns accept local IDs (e.g., 'song_01', 'set_01') seamlessly.
- */
-export function toUUID(id: string): string {
-  if (!id) return '00000000-0000-4000-a000-000000000000';
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (uuidRegex.test(id)) return id.toLowerCase();
-
-  let hash1 = 0;
-  let hash2 = 0;
-  for (let i = 0; i < id.length; i++) {
-    const char = id.charCodeAt(i);
-    hash1 = (hash1 << 5) - hash1 + char;
-    hash1 |= 0;
-    hash2 = (hash2 << 7) - hash2 + char;
-    hash2 |= 0;
-  }
-
-  const h1 = Math.abs(hash1).toString(16).padStart(8, '0');
-  const h2 = Math.abs(hash2).toString(16).padStart(8, '0');
-  const pad = '0000000000000000';
-
-  const part1 = h1;
-  const part2 = (h2 + pad).slice(0, 4);
-  const part3 = '4' + (h1 + pad).slice(0, 3);
-  const part4 = 'a' + (h2 + pad).slice(0, 3);
-  const part5 = (h1 + h2 + pad).slice(0, 12);
-
-  return `${part1}-${part2}-${part3}-${part4}-${part5}`;
-}
-
-// Test Connection using .env credentials
-export async function testSupabaseConnection(): Promise<{ success: boolean; message: string }> {
-  const config = getSupabaseConfig();
-
-  if (!config.isConnected || !config.url || !config.anonKey) {
-    return {
-      success: false,
-      message: 'VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY válidos não foram definidos no arquivo .env.'
-    };
-  }
-
-  try {
-    const tempClient = createClient(config.url, config.anonKey);
-    const { error } = await tempClient.from('songs').select('count', { count: 'exact', head: true });
-
-    if (error && error.code !== 'PGRST116' && !error.message.includes('relation "public.songs" does not exist')) {
-      return { success: false, message: `Erro ao conectar: ${error.message}` };
-    }
-
-    resetSupabaseClient();
-
-    return {
-      success: true,
-      message: error?.message.includes('relation "public.songs" does not exist')
-        ? 'Conectado ao Supabase! (A tabela "songs" não existe no seu banco de dados).'
-        : 'Conectado com sucesso ao banco de dados Supabase!'
-    };
-  } catch (err: any) {
-    return { success: false, message: `Falha na conexão: ${err.message || 'Erro desconhecido'}` };
-  }
 }
 
 // SQL Setup Script reference
@@ -263,129 +230,63 @@ $$ language plpgsql security definer;
 
 -- 2. POLÍTICAS DE RLS
 -- (Consulte o arquivo walkthrough.md ou o plano de migração para o SQL de drop de políticas antigas antes de aplicar as novas)
-`;
 
-/**
- * Syncs blocks and block_songs for a setlist where the current user is an editor member.
- * Skips the setlist upsert (requires owner RLS) but writes block-level changes.
- * Requires the "editors_can_insert/update_blocks/block_songs" RLS policies in Supabase.
- */
-async function syncMemberEditsToSupabase(
-  client: SupabaseClient,
-  st: Setlist,
-  memberUserIdUUID: string
-): Promise<void> {
-  const setlistUUID = toUUID(st.id);
+-- Tombstones de exclusão (eliminam o "delete por ausência")
+create table if not exists public.deletions (
+  id uuid default uuid_generate_v4() primary key,
+  entity_type text not null check (entity_type in ('song', 'setlist', 'block', 'block_song')),
+  entity_key text not null,
+  deleted_by uuid references public.profiles(id) on delete cascade not null,
+  setlist_id uuid references public.setlists(id) on delete cascade,
+  created_at timestamp with time zone default now() not null,
+  unique(entity_type, entity_key)
+);
 
-  if (!st.blocks || st.blocks.length === 0) return;
+alter table public.deletions enable row level security;
 
-  // Clean up deleted blocks
-  const { data: dbBlocks, error: fetchBlocksErr } = await client
-    .from('blocks')
-    .select('id')
-    .eq('setlist_id', setlistUUID);
-
-  if (!fetchBlocksErr && dbBlocks) {
-    const localBlockUUIDs = new Set(st.blocks.map((b) => toUUID(b.id)));
-    const blocksToDelete = dbBlocks.map((b: any) => b.id).filter((id: string) => !localBlockUUIDs.has(id));
-    if (blocksToDelete.length > 0) {
-      await client.from('blocks').delete().in('id', blocksToDelete);
-    }
-  }
-
-  // Upsert all blocks in parallel
-  await Promise.all(
-    st.blocks.map(async (b, blockIdx) => {
-      const blockUUID = toUUID(b.id);
-
-      const { error: blockErr } = await client.from('blocks').upsert([{
-        id: blockUUID,
-        setlist_id: setlistUUID,
-        name: b.name,
-        theme: b.theme || '',
-        position: b.position !== undefined ? b.position : blockIdx
-      }], { onConflict: 'id' });
-
-      if (blockErr) {
-        console.warn('[Sync Member] Block upsert blocked by RLS (block already exists in Supabase, continuing):', blockErr.message);
-      }
-
-      // Clean up deleted block_songs for this block
-      const { data: dbBlockSongs, error: fetchBSErr } = await client
-        .from('block_songs')
-        .select('id, notes, requested_key')
-        .eq('block_id', blockUUID);
-
-      if (!fetchBSErr && dbBlockSongs) {
-        const localBSUUIDs = new Set(
-          (b.items || []).map((item) => {
-            const catalogSongId = item.catalogSongId || item.id;
-            return toUUID(`${b.id}_${catalogSongId}`);
-          })
-        );
-        const bsToDelete = dbBlockSongs.map((bs: any) => bs.id).filter((id: string) => !localBSUUIDs.has(id));
-        if (bsToDelete.length > 0) {
-          await client.from('block_songs').delete().in('id', bsToDelete);
-        }
-      }
-
-      // Build a lookup map of existing Supabase values for merge
-      const existingBSMap = new Map<string, { notes?: string | null; requested_key?: string }>();
-      (dbBlockSongs || []).forEach((bs: any) => {
-        existingBSMap.set(bs.id, { notes: bs.notes, requested_key: bs.requested_key });
-      });
-
-      if (b.items && b.items.length > 0) {
-        await Promise.all(
-          b.items.map(async (item, itemIdx) => {
-            const catalogSongId = item.catalogSongId || item.id;
-            const songUUID = toUUID(catalogSongId);
-            const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
-
-            // Merge: preserve existing Supabase values when local has no data
-            const existing = existingBSMap.get(blockSongUUID);
-            const mergedNotes = item.notes || existing?.notes || null;
-            const mergedKey = item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || existing?.requested_key || '';
-
-            // Ensure the song exists — use the member's user_id since the song is from their catalog
-            if (item.songName && item.songArtist) {
-              const localCatalog = StorageEngine.getCatalog();
-              const localSong = localCatalog.find((s) => s.id === catalogSongId);
-              // Only upsert the song if it belongs to the current member
-              const isMySong = localSong && (!localSong.userId || toUUID(localSong.userId) === memberUserIdUUID);
-              if (isMySong) {
-                await client.from('songs').upsert([{
-                  id: songUUID,
-                  user_id: memberUserIdUUID,
-                  name: item.songName,
-                  artist: item.songArtist,
-                  original_key: item.songOriginalKey || item.originalKeyAtAssignment || '',
-                  slug: '',
-                  cifra_url: null
-                }], { onConflict: 'id' });
-              }
-            }
-
-            const { error: bsErr } = await client.from('block_songs').upsert([{
-              id: blockSongUUID,
-              block_id: blockUUID,
-              song_id: songUUID,
-              position: item.position !== undefined ? item.position : itemIdx,
-              requested_key: mergedKey,
-              notes: mergedNotes
-            }], { onConflict: 'id' });
-
-            if (bsErr) {
-              console.warn('[Sync Member] Could not upsert block_song (RLS policy may be missing):', bsErr.message, {blockId: b.id, songId: catalogSongId, notes: mergedNotes});
-            }
-          })
-        );
-      }
-    })
+create policy "users_select_deletions"
+  on public.deletions for select
+  using (
+    deleted_by = auth.uid()
+    or (
+      setlist_id is not null
+      and (
+        public.is_setlist_owner(setlist_id, auth.uid())
+        or public.is_setlist_member(setlist_id, auth.uid())
+      )
+    )
   );
 
-  console.log('[Sync Member] Editor edits synced for setlist:', st.id);
-}
+create policy "users_insert_deletions"
+  on public.deletions for insert
+  with check (
+    deleted_by = auth.uid()
+    and (
+      setlist_id is null
+      or public.is_setlist_editor(setlist_id, auth.uid())
+    )
+  );
+
+create policy "users_update_deletions"
+  on public.deletions for update
+  using (
+    deleted_by = auth.uid()
+    or (
+      setlist_id is not null
+      and public.is_setlist_owner(setlist_id, auth.uid())
+    )
+  );
+
+create policy "users_delete_deletions"
+  on public.deletions for delete
+  using (
+    deleted_by = auth.uid()
+    or (
+      setlist_id is not null
+      and public.is_setlist_owner(setlist_id, auth.uid())
+    )
+  );
+`;
 
 /**
  * Fetches fresh member data from Supabase for a single setlist and merges it
@@ -484,7 +385,6 @@ export async function fetchSetlistMembers(
       StorageEngine.saveSetlists(allSetlists);
     }
 
-    console.log('[fetchSetlistMembers] Fetched', members.length, 'members for setlist', setlistId);
     return { success: true, memberCount: members.length };
   } catch (e: any) {
     console.error('[fetchSetlistMembers] Exception:', e);
@@ -510,317 +410,42 @@ export async function syncLocalDataToSupabase(
   const user = StorageEngine.getUser();
   const userIdUUID = toUUID(user.id);
   const targetSongs = songs || StorageEngine.getCatalog();
-  const targetSetlists = setlists || StorageEngine.getSetlists(); // Removido filtro de usuário
-  console.log('[Sync] Target setlists for sync:', JSON.stringify(targetSetlists));
-  console.log('[Sync] Raw localStorage string:', localStorage.getItem('repertorio_setlists_v2'));
+  const targetSetlists = setlists || StorageEngine.getSetlists();
 
   try {
     // Ensure the auth session is restored from local storage before making RLS queries
     await client.auth.getSession();
 
-    // FORCE FRESH READ FROM LOCAL STORAGE
-    const localSetlists = JSON.parse(localStorage.getItem('repertorio_setlists_v2') || '[]');
-    console.log('[Sync] Forcing fresh read from localStorage. Setlists found:', localSetlists.length);
-    if (localSetlists.length > 0) {
-      console.log('[Sync] First setlist members:', JSON.stringify(localSetlists[0].members));
-    }
+    // O orquestrador de sync (plan.ts) decide o que escrever com base no
+    // estado local + snapshot remoto + permissões; o SupabaseAdapter apenas
+    // executa o plano de forma mecânica. As regras são testáveis sem rede.
+    const adapter = new SupabaseAdapter(client);
+    await adapter.ensureProfile(userIdUUID, user.name || user.email || '', user.email || '');
 
-    // 0. Ensure user profile exists (including email)
-    const { error: profileErr } = await client.from('profiles').upsert([
-      { id: userIdUUID, display_name: user.name, email: user.email }
-    ], { onConflict: 'id' });
-    if (profileErr) {
-      console.error('[Supabase Profile Upsert Error]', profileErr);
-    }
+    const [profileEmailMap, remote] = await Promise.all([
+      adapter.fetchProfiles(),
+      adapter.fetchSnapshot(userIdUUID)
+    ]);
 
-    // Fetch profiles to map member email/names to real user IDs in Supabase (selecting email too)
-    const { data: allProfilesData } = await client.from('profiles').select('id, display_name, email');
-    const profileEmailMap = new Map<string, string>();
-    (allProfilesData || []).forEach((p: any) => {
-      const email = (p.email || p.display_name || '').toLowerCase().trim();
-      if (email) profileEmailMap.set(email, p.id);
+    const deletions = StorageEngine.getDeletions();
+    const plan = buildSyncPlan({
+      currentUserId: userIdUUID,
+      currentEmail: (user.email || '').toLowerCase(),
+      profileEmailMap,
+      savedDocFingerprints: getSyncedDocFingerprints(),
+      deletions,
+      catalog: targetSongs,
+      setlists: targetSetlists,
+      remote
     });
 
-    // 1. Sync Songs — only sync songs that belong to the current logged-in user.
-    // Songs from shared setlists (owned by other users) must NOT be re-synced
-    // because doing so would violate the RLS policy (songs_insert_own / songs_update_own
-    // both require user_id = auth.uid()).
-    const ownSongs = targetSongs.filter(
-      (s) => !s.userId || toUUID(s.userId) === userIdUUID
+    await adapter.executePlan(plan);
+
+    // Persistir fingerprints APÓS sync bem-sucedido (delta-sync de documentos)
+    const syncedSongs = targetSongs.filter(
+      (s) => (!s.userId || toUUID(s.userId) === userIdUUID) && !hasTombstone(deletions, 'song', s.id)
     );
-
-    // Delete songs that were deleted locally
-    const { data: dbSongs, error: fetchSongsErr } = await client
-      .from('songs')
-      .select('id')
-      .eq('user_id', userIdUUID);
-
-    if (!fetchSongsErr && dbSongs && dbSongs.length > 0) {
-      if (ownSongs.length === 0) {
-        console.warn('[Sync] Local songs is empty but remote has songs — skipping deletion to prevent data loss');
-      } else {
-        const localSongUUIDs = new Set(ownSongs.map((s) => toUUID(s.id)));
-        const songsToDelete = dbSongs.map((s: any) => s.id).filter((id: string) => !localSongUUIDs.has(id));
-        if (songsToDelete.length > 0) {
-          const { error: delErr } = await client.from('songs').delete().in('id', songsToDelete);
-          if (delErr) {
-            console.warn('[Sync] Could not delete songs (RLS policy may prevent this):', delErr.message);
-          }
-        }
-      }
-    }
-
-    if (ownSongs.length > 0) {
-      const dbSongsData = ownSongs.map((s) => ({
-        id: toUUID(s.id),
-        user_id: userIdUUID,
-        name: s.name,
-        artist: s.artist,
-        original_key: s.originalKey || '',
-        slug: s.slugOverride || '',
-        cifra_url: null,
-        documents: s.documents || []
-      }));
-
-      const { error: songErr } = await client.from('songs').upsert(dbSongsData, { onConflict: 'id' });
-      if (songErr) throw new Error(`Erro sincronizando músicas: ${songErr.message}`);
-    }
-
-    // Delete setlists that were deleted locally
-    const { data: dbSetlists, error: fetchSetlistsErr } = await client
-      .from('setlists')
-      .select('id')
-      .eq('user_id', userIdUUID);
-
-    if (!fetchSetlistsErr && dbSetlists && dbSetlists.length > 0) {
-      const ownLocalSetlists = targetSetlists.filter(
-        (st) => !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase()
-      );
-      if (ownLocalSetlists.length === 0) {
-        console.warn('[Sync] Local own setlists is empty but remote has setlists — skipping deletion to prevent data loss');
-      } else {
-        const ownSetlistUUIDs = new Set(ownLocalSetlists.map((st) => toUUID(st.id)));
-        const setlistsToDelete = dbSetlists.map((s: any) => s.id).filter((id: string) => !ownSetlistUUIDs.has(id));
-        if (setlistsToDelete.length > 0) {
-          const { error: delErr } = await client.from('setlists').delete().in('id', setlistsToDelete);
-          if (delErr) {
-            console.warn('[Sync] Could not delete setlists (RLS policy may prevent this):', delErr.message);
-          }
-        }
-      }
-    }
-
-    // 2. Sync Setlists, Blocks, Block Songs, Invites and Members
-    for (const st of targetSetlists) {
-      const setlistUUID = toUUID(st.id);
-      const isOwner = !st.ownerEmail || st.ownerEmail.toLowerCase() === user.email.toLowerCase();
-
-      if (!isOwner) {
-        const myMembership = st.members?.find(
-          (m) => m.email.toLowerCase() === user.email.toLowerCase()
-        );
-        if (myMembership?.role === 'edit') {
-          await syncMemberEditsToSupabase(client, st, userIdUUID);
-        } else if (myMembership) {
-          console.log('[Sync] Member with view role, skipping sync for setlist:', st.name);
-        } else {
-          console.log('[Sync] Skipping non-owned setlist without membership:', st.name);
-        }
-        continue;
-      }
-
-      const { error: setlistErr } = await client.from('setlists').upsert([{
-        id: setlistUUID,
-        user_id: userIdUUID,
-        name: st.name,
-        updated_at: st.updatedAt || new Date().toISOString()
-      }], { onConflict: 'id' });
-
-      if (setlistErr) throw new Error(`Erro sincronizando setlist "${st.name}": ${setlistErr.message}`);
-
-      // Clean up deleted blocks for this setlist
-      const { data: dbBlocks, error: fetchBlocksErr } = await client
-        .from('blocks')
-        .select('id')
-        .eq('setlist_id', setlistUUID);
-
-      if (!fetchBlocksErr && dbBlocks) {
-        const localBlockUUIDs = new Set((st.blocks || []).map((b) => toUUID(b.id)));
-        const blocksToDelete = dbBlocks.map((b: any) => b.id).filter((id: string) => !localBlockUUIDs.has(id));
-        if (blocksToDelete.length > 0) {
-          const { error: delBlockErr } = await client.from('blocks').delete().in('id', blocksToDelete);
-          if (delBlockErr) {
-            console.warn('[Sync] Could not delete blocks (RLS policy may prevent this):', delBlockErr.message);
-          }
-        }
-      }
-
-      // Sync Blocks & Block Songs
-      if (st.blocks && st.blocks.length > 0) {
-        // Phase 1: upsert all blocks in parallel (they are independent of each other)
-        await Promise.all(
-          st.blocks.map(async (b, blockIdx) => {
-            const blockUUID = toUUID(b.id);
-            const { error: blockErr } = await client.from('blocks').upsert([{
-              id: blockUUID,
-              setlist_id: setlistUUID,
-              name: b.name,
-              theme: b.theme || '',
-              position: b.position !== undefined ? b.position : blockIdx
-            }], { onConflict: 'id' });
-            if (blockErr) throw new Error(`Erro sincronizando bloco "${b.name}": ${blockErr.message}`);
-          })
-        );
-
-        // Phase 2: process block_songs for each block (blocks now exist, FK is satisfied)
-        await Promise.all(
-          st.blocks.map(async (b) => {
-            const blockUUID = toUUID(b.id);
-
-            // Fetch existing block_songs for this block (merge data before upsert)
-            const { data: dbBlockSongs, error: fetchBSErr } = await client
-              .from('block_songs')
-              .select('id, notes, requested_key')
-              .eq('block_id', blockUUID);
-
-            if (!fetchBSErr && dbBlockSongs) {
-              const localBSUUIDs = new Set(
-                (b.items || []).map((item) => {
-                  const catalogSongId = item.catalogSongId || item.id;
-                  return toUUID(`${b.id}_${catalogSongId}`);
-                })
-              );
-              const bsToDelete = dbBlockSongs.map((bs: any) => bs.id).filter((id: string) => !localBSUUIDs.has(id));
-              if (bsToDelete.length > 0) {
-                const { error: delBSErr } = await client.from('block_songs').delete().in('id', bsToDelete);
-                if (delBSErr) {
-                  console.warn('[Sync] Could not delete block_songs (RLS policy may prevent this):', delBSErr.message);
-                }
-              }
-            }
-
-            // Build a lookup map of existing Supabase values for merge
-            const existingBSMap = new Map<string, { notes?: string | null; requested_key?: string }>();
-            (dbBlockSongs || []).forEach((bs: any) => {
-              existingBSMap.set(bs.id, { notes: bs.notes, requested_key: bs.requested_key });
-            });
-
-            if (b.items && b.items.length > 0) {
-              await Promise.all(
-                b.items.map(async (item, itemIdx) => {
-                  const catalogSongId = item.catalogSongId || item.id;
-                  const songUUID = toUUID(catalogSongId);
-                  const blockSongUUID = toUUID(`${b.id}_${catalogSongId}`);
-
-                  // Merge: preserve existing Supabase values when local has no data
-                  const existing = existingBSMap.get(blockSongUUID);
-                  const mergedNotes = item.notes || existing?.notes || null;
-                  const mergedKey = item.requestedKey || item.songOriginalKey || item.originalKeyAtAssignment || existing?.requested_key || '';
-
-                  const { error: bsErr } = await client.from('block_songs').upsert([{
-                    id: blockSongUUID,
-                    block_id: blockUUID,
-                    song_id: songUUID,
-                    position: item.position !== undefined ? item.position : itemIdx,
-                    requested_key: mergedKey,
-                    notes: mergedNotes
-                  }], { onConflict: 'id' });
-
-                  if (bsErr) throw new Error(`Erro vinculando música no bloco: ${bsErr.message}`);
-                })
-              );
-            }
-          })
-        );
-      }
-
-      // Clean up deleted members and invites
-      const { data: dbMembers, error: fetchMembersErr } = await client
-        .from('setlist_members')
-        .select('id, user_id')
-        .eq('setlist_id', setlistUUID);
-
-      if (!fetchMembersErr && dbMembers) {
-        const localMemberUUIDs = new Set((st.members || []).map((m) => toUUID(`${st.id}_${m.email}`)));
-        const membersToDelete = dbMembers
-          .filter((m: any) => toUUID(m.user_id) !== userIdUUID)
-          .map((m: any) => m.id)
-          .filter((id: string) => !localMemberUUIDs.has(id));
-
-        if (membersToDelete.length > 0) {
-          const { error: delMemErr } = await client.from('setlist_members').delete().in('id', membersToDelete);
-          if (delMemErr) {
-            console.error('[Sync] Error deleting member:', delMemErr.message);
-          }
-        }
-      }
-
-      const { data: dbInvites, error: fetchInvitesErr } = await client
-        .from('setlist_invites')
-        .select('id')
-        .eq('setlist_id', setlistUUID);
-
-      if (!fetchInvitesErr && dbInvites) {
-        const localInviteUUIDs = new Set(
-          (st.members || [])
-            .filter((m) => m.status === 'pending')
-            .map((m) => toUUID(`invite_${st.id}_${m.email}`))
-        );
-        const invitesToDelete = dbInvites
-          .map((i: any) => i.id)
-          .filter((id: string) => {
-            if (id === toUUID(`link_share_${st.id}`)) return false;
-            return !localInviteUUIDs.has(id);
-          });
-
-        if (invitesToDelete.length > 0) {
-          const { error: delInvErr } = await client.from('setlist_invites').delete().in('id', invitesToDelete);
-          if (delInvErr) {
-            console.error('[Sync] Error deleting invite:', delInvErr.message);
-          }
-        }
-      }
-
-      // Sync Members and Pending Invites in parallel
-      console.log('[Sync] Setlist ID:', st.id, 'Members array length:', st.members?.length);
-      if (st.members && st.members.length > 0) {
-        console.log('[Sync] Members data:', JSON.stringify(st.members));
-        await Promise.all(
-          st.members.map(async (m) => {
-            const memberEmailClean = (m.email || '').toLowerCase().trim();
-            const targetUserId = profileEmailMap.get(memberEmailClean) || (memberEmailClean === user.email.toLowerCase() ? userIdUUID : null);
-            const memberUUID = toUUID(`${st.id}_${m.email}`);
-
-            if (targetUserId) {
-              const { error: memErr } = await client.from('setlist_members').upsert([{
-                id: memberUUID,
-                setlist_id: setlistUUID,
-                user_id: targetUserId,
-                role: m.role === 'edit' ? 'editor' : 'viewer',
-                email: m.email
-              }], { onConflict: 'setlist_id,user_id' });
-
-              if (memErr) console.error('[Sync] Error upserting member:', memErr);
-              else console.log('[Sync] Member upserted successfully:', m.email);
-            } else {
-              console.log(`[Sync] Member "${m.email}" has no registered profile in Supabase yet. Skipped setlist_members FK upsert.`);
-            }
-
-            // Sync pending invites to setlist_invites table
-            if (m.status === 'pending') {
-              const inviteId = toUUID(`invite_${st.id}_${m.email}`);
-              await client.from('setlist_invites').upsert([{
-                id: inviteId,
-                setlist_id: setlistUUID,
-                inviter_id: userIdUUID,
-                invitee_email: m.email,
-                status: 'pending'
-              }], { onConflict: 'id' });
-            }
-          })
-        );
-      }
-    }
+    syncedSongs.forEach((s) => saveSyncedDocFingerprint(s.id, songDocsFingerprint(s)));
 
     return { success: true, message: 'Dados sincronizados com o Supabase com sucesso!' };
   } catch (err: any) {
@@ -874,22 +499,47 @@ export async function fetchRemoteDataFromSupabase(): Promise<{
       if (email) profileEmailMap.set(email, p.id);
       if (p.id && p.display_name) profileIdToNameMap.set(p.id, p.display_name);
     });
-    console.log('[Supabase Fetch] ProfileEmailMap:', Object.fromEntries(profileEmailMap));
 
     const { data: membersData, error: membersErr } = await client
       .from('setlist_members')
       .select('*')
       .eq('user_id', currentUserUUID);
 
+    // Fetch tombstones de exclusão e mescla-los no storage local para que
+    // os merges respeitem exclusões feitas em outros dispositivos.
+    try {
+      const { data: deletionsData } = await client.from('deletions').select('*');
+      if (deletionsData && deletionsData.length > 0) {
+        const remoteDeletions: DeletionRecord[] = (deletionsData || []).map((row: any) => ({
+          id: row.id,
+          entityType: row.entity_type,
+          entityId: row.entity_key,
+          userId: row.deleted_by,
+          setlistId: row.setlist_id || undefined,
+          createdAt: row.created_at || new Date().toISOString()
+        }));
+        StorageEngine.mergeRemoteDeletions(remoteDeletions);
+      }
+    } catch (err) {
+      // Tabela ainda não existe (migração pendente): segue sem tombstones remotos
+      console.warn('[Supabase Fetch] Could not load deletions (migration pending?):', err);
+    }
+
     const { data: songsData, error: songsErr } = await client
       .from('songs')
       .select('*')
       .eq('user_id', currentUserUUID);
-    const { data: rawSetlistsData, error: setlistsErr } = await client.from('setlists').select('*');
-    console.log('[Supabase Fetch] Setlists data query result:', rawSetlistsData, 'Error:', setlistsErr);
+    const memberSetlistIds = (membersData || []).map((m: any) => m.setlist_id);
+    let setlistQuery = client.from('setlists').select('*');
+    if (memberSetlistIds.length > 0) {
+      setlistQuery = setlistQuery.or(`user_id.eq.${currentUserUUID},id.in.(${memberSetlistIds.join(',')})`);
+    } else {
+      setlistQuery = setlistQuery.eq('user_id', currentUserUUID);
+    }
+    const { data: rawSetlistsData, error: setlistsErr } = await setlistQuery;
     const setlistsData = (rawSetlistsData || []).filter((st: any) => {
       const isOwner = st.user_id === currentUserUUID;
-      const isMember = (membersData || []).some((m: any) => m.setlist_id === st.id);
+      const isMember = memberSetlistIds.includes(st.id);
       return isOwner || isMember;
     });
 
@@ -1045,7 +695,6 @@ export async function enableSetlistLinkShare(setlistId: string): Promise<boolean
       console.error('[Share Link] Failed to enable link share in Supabase:', error);
       return false;
     }
-    console.log('[Share Link] Link share enabled in Supabase for setlist:', setlistId);
     return true;
   } catch (e: any) {
     console.error('[Share Link] Exception enabling link share:', e);
@@ -1096,10 +745,25 @@ export async function selfJoinSetlistAsMember(
       console.error('[Share Link] Failed to self-join setlist_members:', error);
       return false;
     }
-    console.log('[Share Link] Self-join persisted to Supabase. Role:', dbRole);
     return true;
   } catch (e: any) {
     console.error('[Share Link] Exception during self-join:', e);
     return false;
   }
+}
+
+// Sync helper com toast de erro embutido. Centraliza o guard de conexão e o
+// tratamento de erro que estava duplicado em SetlistDetail, FocusedBlockView,
+// SetlistsList e ProfileView. Retorna true se o sync rodou com sucesso.
+export async function syncWithToast(
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void,
+  setlists?: Setlist[]
+): Promise<boolean> {
+  if (!getSupabaseConfig().isConnected) return false;
+  const result = await syncLocalDataToSupabase(undefined, setlists);
+  if (!result.success) {
+    showToast(`Erro ao sincronizar: ${result.message}`, 'error');
+    return false;
+  }
+  return true;
 }

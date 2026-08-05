@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../lib/store';
 import { StorageEngine } from '../../lib/storage';
-import { enableSetlistLinkShare } from '../../lib/supabase';
-import { syncLocalDataToSupabase, fetchSetlistMembers } from '../../lib/supabase';
+import { enableSetlistLinkShare, fetchSetlistMembers, getSupabaseConfig, syncWithToast } from '../../lib/supabase';
 import { Setlist, Block } from '../../types';
 import { getThemeColorStyle } from '../../lib/utils';
 import { Modal } from '../common/Modal';
+import { MembersManager } from '../common/MembersManager';
 import {
   Search,
   Plus,
@@ -15,9 +15,6 @@ import {
   Trash2,
   ArrowUp,
   ArrowDown,
-  ChevronRight,
-  UserPlus,
-  Shield,
   X,
   Sparkles,
   Users,
@@ -41,7 +38,12 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   isAddBlockModalOpen,
   setIsAddBlockModalOpen
 }) => {
-  const { setFocusedBlockId, searchQuery, setSearchQuery, showToast, showCascadeWarning, setActiveSetlistId } = useAppStore();
+  const setFocusedBlockId = useAppStore((s) => s.setFocusedBlockId);
+  const searchQuery = useAppStore((s) => s.searchQuery);
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
+  const showToast = useAppStore((s) => s.showToast);
+  const showCascadeWarning = useAppStore((s) => s.showCascadeWarning);
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
   const currentUser = StorageEngine.getUser();
 
   const [setlist, setSetlist] = useState<Setlist | undefined>(() =>
@@ -83,7 +85,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   useEffect(() => {
     const ownerCheck = setlist?.ownerEmail?.toLowerCase() === currentUser.email?.toLowerCase();
     if (!isInviteModalOpen || !ownerCheck) return;
-    const cfg = StorageEngine.getSupabaseConfig();
+    const cfg = getSupabaseConfig();
     if (!cfg.isConnected) return;
 
     setIsFetchingMembers(true);
@@ -112,9 +114,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     const copy = StorageEngine.duplicateSetlist(setlist.id, copyName);
     if (copy) {
       showToast(`Setlist "${copy.name}" copiado para o seu dashboard com sucesso!`, 'success');
-      if (StorageEngine.getSupabaseConfig().isConnected) {
-        await syncLocalDataToSupabase();
-      }
+      await syncWithToast(showToast);
       setActiveSetlistId(copy.id);
     }
   };
@@ -130,12 +130,7 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   };
 
   const triggerSync = async (setlists?: Setlist[]) => {
-    if (StorageEngine.getSupabaseConfig().isConnected) {
-      const result = await syncLocalDataToSupabase(undefined, setlists);
-      if (!result.success) {
-        showToast(`Erro ao sincronizar: ${result.message}`, 'error');
-      }
-    }
+    await syncWithToast(showToast, setlists);
   };
 
   // Add Block submit
@@ -215,19 +210,15 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
     e.preventDefault();
     if (!inviteEmail.trim()) return;
 
-    console.log('[Invite] Sending invite to:', inviteEmail, 'Role:', inviteRole);
     const success = StorageEngine.sendInvitation(setlist.id, inviteEmail, inviteRole);
-    console.log('[Invite] StorageEngine result:', success);
 
     if (success) {
       // Forçar atualização do estado local antes do sync
       const updatedSetlist = StorageEngine.getSetlistById(setlist.id);
       if (updatedSetlist) {
         setSetlist(updatedSetlist);
-        console.log('[Invite] Setlist state refreshed locally');
       }
 
-      console.log('[Invite] Syncing setlist after invite...');
       await triggerSync(updatedSetlist ? [updatedSetlist] : undefined);
       showToast(`Convite enviado para ${inviteEmail}!`, 'success');
       setInviteEmail('');
@@ -252,7 +243,8 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
   };
 
   // Search Filtering
-  const catalog = useMemo(() => StorageEngine.getCatalog(), []);
+  const catalogRevision = StorageEngine.getCatalogRevision();
+  const catalog = useMemo(() => StorageEngine.getCatalog(), [catalogRevision]);
   const filteredBlocks = setlist.blocks.filter((block) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
@@ -444,7 +436,6 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
 
-                      <ChevronRight className="w-5 h-5 text-zinc-400 dark:text-purple-400/60 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors ml-1" />
                     </div>
                   </div>
 
@@ -668,49 +659,14 @@ export const SetlistDetail: React.FC<SetlistDetailProps> = ({
 
             {/* Members List */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-zinc-500 dark:text-purple-300 uppercase tracking-wider">
-                Acessos do Setlist ({setlist.members.length + 1})
-              </h4>
-              {isFetchingMembers && (
-                <span className="text-[10px] text-purple-400 animate-pulse">Atualizando...</span>
-              )}
-            </div>
-
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {/* Owner */}
-              <div className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{setlist.ownerDisplayName || setlist.ownerEmail}</span>
-                  <span className="text-[10px] text-purple-600 dark:text-purple-400 flex items-center gap-1 font-semibold">
-                    <Shield className="w-3 h-3" />
-                    Dono do Setlist
-                  </span>
-                </div>
-              </div>
-
-              {/* Members who joined via link */}
-              {setlist.members.map((m) => (
-                <div key={m.id} className="bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-purple-900/40 rounded-xl p-3 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-zinc-900 dark:text-zinc-100 block">{m.email}</span>
-                    <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                      Entrou via Link • <strong className="text-emerald-600 dark:text-emerald-400">Acesso Concedido</strong>
-                    </span>
-                  </div>
-
-                  {isOwner && (
-                    <button
-                      onClick={() => handleRevoke(m.email)}
-                      className="p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                      title="Revogar Acesso"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+            <MembersManager
+              ownerName={setlist.ownerDisplayName || ''}
+              ownerEmail={setlist.ownerEmail}
+              members={setlist.members}
+              isFetching={isFetchingMembers}
+              canRevoke={isOwner}
+              onRevoke={handleRevoke}
+            />
           </div>
         </div>
       </Modal>

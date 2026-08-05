@@ -3,7 +3,8 @@ import { useAppStore } from '../../lib/store';
 import { CheckCircle2, AlertCircle, Info, Undo2, X } from 'lucide-react';
 
 export const ToastContainer: React.FC = () => {
-  const { toasts, dismissToast } = useAppStore();
+  const toasts = useAppStore((s) => s.toasts);
+  const dismissToast = useAppStore((s) => s.dismissToast);
 
   if (toasts.length === 0) return null;
 

@@ -5,7 +5,9 @@ import { X, ExternalLink, Edit3, Check, AlertCircle, Music } from 'lucide-react'
 import { parseCifraClubUrl } from '../../lib/utils';
 
 export const CifraWebviewModal: React.FC = () => {
-  const { cifraModal, closeCifraModal, showToast } = useAppStore();
+  const cifraModal = useAppStore((s) => s.cifraModal);
+  const closeCifraModal = useAppStore((s) => s.closeCifraModal);
+  const showToast = useAppStore((s) => s.showToast);
   const [isEditingSlug, setIsEditingSlug] = useState(false);
   const [customSlug, setCustomSlug] = useState('');
   // Start as null (unknown), will resolve to true/false after iframe attempt

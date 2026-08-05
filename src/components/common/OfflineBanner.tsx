@@ -3,7 +3,8 @@ import { useAppStore } from '../../lib/store';
 import { WifiOff, X } from 'lucide-react';
 
 export const OfflineBanner: React.FC = () => {
-  const { isOffline, setIsOffline } = useAppStore();
+  const isOffline = useAppStore((s) => s.isOffline);
+  const setIsOffline = useAppStore((s) => s.setIsOffline);
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {

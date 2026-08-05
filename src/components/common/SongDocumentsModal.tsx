@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { StorageEngine } from '../../lib/storage';
 import { CatalogSong, SongDocument } from '../../types';
 import { useAppStore } from '../../lib/store';
@@ -12,7 +12,6 @@ import {
   X,
   FileMusic,
   Image as ImageIcon,
-  Plus,
   AlertCircle,
   File,
   ExternalLink
@@ -42,12 +41,11 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
   onClose,
   onSongUpdated
 }) => {
-  const { showToast } = useAppStore();
+  const showToast = useAppStore((s) => s.showToast);
   const [activePreviewDoc, setActivePreviewDoc] = useState<SongDocument | null>(null);
   const [pdfError, setPdfError] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
 
   const openDocExternal = useCallback((doc: SongDocument) => {
     const a = document.createElement('a');
@@ -335,7 +333,7 @@ export const SongDocumentsModal: React.FC<SongDocumentsModalProps> = ({
               </div>
             </div>
 
-            <div ref={previewRef} className="flex-1 overflow-auto bg-black flex items-center justify-center p-2">
+            <div className="flex-1 overflow-auto bg-black flex items-center justify-center p-2">
               {activePreviewDoc.type === 'image' ? (
                 <img
                   src={activePreviewDoc.dataUrl}

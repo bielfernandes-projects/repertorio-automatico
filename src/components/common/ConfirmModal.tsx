@@ -3,7 +3,8 @@ import { useAppStore } from '../../lib/store';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 
 export const ConfirmModal: React.FC = () => {
-  const { cascadeWarning, dismissCascadeWarning } = useAppStore();
+  const cascadeWarning = useAppStore((s) => s.cascadeWarning);
+  const dismissCascadeWarning = useAppStore((s) => s.dismissCascadeWarning);
 
   if (!cascadeWarning) return null;
 

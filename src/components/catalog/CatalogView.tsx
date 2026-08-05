@@ -22,7 +22,9 @@ import { buildCifraClubUrl, parseCifraClubUrl } from '../../lib/utils';
 import { isAllowedFileType } from '../../lib/sanitize';
 
 export const CatalogView: React.FC = () => {
-  const { showToast, showCascadeWarning, openCifraModal } = useAppStore();
+  const showToast = useAppStore((s) => s.showToast);
+  const showCascadeWarning = useAppStore((s) => s.showCascadeWarning);
+  const openCifraModal = useAppStore((s) => s.openCifraModal);
   const [catalog, setCatalog] = useState<CatalogSong[]>(() => StorageEngine.getCatalog());
   const [search, setSearch] = useState('');
 

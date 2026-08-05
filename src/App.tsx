@@ -68,16 +68,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 export default function App() {
-  const { 
-    activeTab, 
-    activeSetlistId, 
-    focusedBlockId, 
-    isDarkMode, 
-    setActiveTab, 
-    setActiveSetlistId, 
-    setFocusedBlockId,
-    showToast 
-  } = useAppStore();
+  const activeTab = useAppStore((s) => s.activeTab);
+  const activeSetlistId = useAppStore((s) => s.activeSetlistId);
+  const focusedBlockId = useAppStore((s) => s.focusedBlockId);
+  const isDarkMode = useAppStore((s) => s.isDarkMode);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setActiveSetlistId = useAppStore((s) => s.setActiveSetlistId);
+  const setFocusedBlockId = useAppStore((s) => s.setFocusedBlockId);
+  const showToast = useAppStore((s) => s.showToast);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return !!StorageEngine.getUser()?.email;
@@ -269,20 +267,10 @@ export default function App() {
           const res = await fetchRemoteDataFromSupabase();
           
           if (res.success && res.setlists) {
-            // Save the merged remote setlists into local storage
-            const mergedSetlists = [...res.setlists];
+            // Save the merged remote setlists into local storage (union, tombstone-aware)
+            const { mergeSetlists } = await import('./lib/merge');
             const localSetlists = StorageEngine.getSetlists();
-            
-            localSetlists.forEach((localSt) => {
-              const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
-              if (remoteIdx >= 0) {
-                if ((localSt.updatedAt || localSt.createdAt) > (mergedSetlists[remoteIdx].updatedAt || mergedSetlists[remoteIdx].createdAt)) {
-                  mergedSetlists[remoteIdx] = localSt;
-                }
-              } else {
-                mergedSetlists.push(localSt);
-              }
-            });
+            const mergedSetlists = mergeSetlists(localSetlists, res.setlists, StorageEngine.getDeletions());
             StorageEngine.saveSetlists(mergedSetlists);
 
             // Try joining again now that remote setlists have been merged/loaded
@@ -303,7 +291,7 @@ export default function App() {
           const selfJoinOk = await selfJoinSetlistAsMember(id, role);
           if (!selfJoinOk) {
             console.warn('[Share Link] Self-join to Supabase returned false');
-            showToast('Aviso: não foi possível registrar seu acesso no servidor. Suas edições serão sincronizadas na próxima vez.', 'warning');
+            showToast('Aviso: não foi possível registrar seu acesso no servidor. Suas edições serão sincronizadas na próxima vez.', 'info');
           }
         } catch (err) {
           console.error('[Share Link] selfJoinSetlistAsMember threw:', err);
@@ -358,57 +346,14 @@ export default function App() {
 
         const res = await fetchRemoteDataFromSupabase();
         if (res.success && res.songs && res.setlists) {
-          if (res.songs.length > 0 || res.setlists.length > 0) {
-            // Merge: for each local item, keep it if it was updated more recently than the remote version
-            const mergedSongs = [...res.songs];
-            localSongs.forEach((localSong) => {
-              const remoteIdx = mergedSongs.findIndex((s) => s.id === localSong.id);
-              if (remoteIdx >= 0) {
-                if ((localSong.updatedAt || localSong.createdAt) > (mergedSongs[remoteIdx].updatedAt || mergedSongs[remoteIdx].createdAt)) {
-                  mergedSongs[remoteIdx] = localSong;
-                }
-              } else {
-                mergedSongs.push(localSong);
-              }
-            });
-            StorageEngine.saveCatalog(mergedSongs);
+          const { mergeSongs, mergeSetlists } = await import('./lib/merge');
+          // Tombstones já incluem exclusões remotas (mescladas pelo fetch).
+          // A união nunca descarta dados de um lado — itens só saem via tombstone.
+          const mergedSongs = mergeSongs(localSongs, res.songs, StorageEngine.getDeletions());
+          const mergedSetlists = mergeSetlists(localSetlists, res.setlists, StorageEngine.getDeletions());
+          StorageEngine.saveCatalog(mergedSongs);
+          StorageEngine.saveSetlists(mergedSetlists);
 
-            const mergedSetlists = [...res.setlists];
-            localSetlists.forEach((localSt) => {
-              const remoteIdx = mergedSetlists.findIndex((s) => s.id === localSt.id);
-              if (remoteIdx >= 0) {
-                const remoteSt = mergedSetlists[remoteIdx];
-                const localUpdatedAt = localSt.updatedAt || localSt.createdAt || '';
-                const remoteUpdatedAt = remoteSt.updatedAt || remoteSt.createdAt || '';
-                if ((localUpdatedAt) > (remoteUpdatedAt)) {
-                  console.log('[Merge] Local setlist newer, merging block-item notes from remote', {setlist: localSt.name, localUpdatedAt, remoteUpdatedAt});
-                  if (remoteSt.blocks) {
-                    localSt.blocks?.forEach((localBlock) => {
-                      const remoteBlock = remoteSt.blocks.find((b) => b.id === localBlock.id);
-                      if (remoteBlock) {
-                        localBlock.items?.forEach((localItem) => {
-                          const remoteItem = remoteBlock.items?.find((i) => i.catalogSongId === localItem.catalogSongId);
-                          if (remoteItem) {
-                            if (!localItem.notes && remoteItem.notes) localItem.notes = remoteItem.notes;
-                            if (!localItem.requestedKey && remoteItem.requestedKey) localItem.requestedKey = remoteItem.requestedKey;
-                          }
-                        });
-                      }
-                    });
-                  }
-                  mergedSetlists[remoteIdx] = localSt;
-                } else {
-                  console.log('[Merge] Remote setlist kept (equal or newer)', {setlist: localSt.name, localUpdatedAt, remoteUpdatedAt});
-                  if (localSt.members?.length) {
-                    remoteSt.members = localSt.members;
-                  }
-                }
-              } else {
-                mergedSetlists.push(localSt);
-              }
-            });
-            StorageEngine.saveSetlists(mergedSetlists);
-          }
           // Push merged/local data to cloud
           await syncLocalDataToSupabase();
         }

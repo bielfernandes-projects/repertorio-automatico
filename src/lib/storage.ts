@@ -4,20 +4,22 @@ import {
   Block,
   BlockItem,
   UserProfile,
-  Invitation,
   CascadeWarning,
   SongDocument,
-  SupabaseConfig
+  DeletionEntityType,
+  DeletionRecord
 } from '../types';
 import { normalizeKeyDisplay } from './utils';
+import { deletionKey } from './ids';
+import { RevisionCache } from './revision-cache';
 
 const STORAGE_KEYS = {
   USER: 'repertorio_user',
   CATALOG: 'repertorio_catalog_v2',
   SETLISTS: 'repertorio_setlists_v2',
-  INVITATIONS: 'repertorio_invitations_v2',
-  THEME: 'repertorio_theme_mode',
-  SUPABASE_CONFIG: 'repertorio_supabase_config_v1'
+  SUPABASE_CONFIG: 'repertorio_supabase_config_v1',
+  DELETIONS: 'repertorio_deletions_v1',
+  DISMISSED_KEY_WARNINGS: 'repertorio_dismissed_key_warnings_v1'
 };
 
 // Event listener type for simulated realtime updates
@@ -55,7 +57,6 @@ function triggerAutoBackgroundSync() {
 
 function notifySubscribers() {
   subscribers.forEach((cb) => cb());
-  window.dispatchEvent(new Event('repertorio_storage_updated'));
   triggerAutoBackgroundSync();
 }
 
@@ -71,6 +72,36 @@ const SEED_CATALOG: CatalogSong[] = [];
 
 // Initial default setlists
 const SEED_SETLISTS: Setlist[] = [];
+
+// Caches de leitura: o JSON.parse (e o sort do catálogo, que carrega
+// base64 de documentos) roda uma vez por ciclo — os reads seguintes são
+// O(1). A revisão alimenta os useMemo dos componentes (FocusedBlockView,
+// SetlistDetail) para que o cache seja re-lido após um merge/sync.
+const catalogCache = new RevisionCache<CatalogSong[]>(() => {
+  const raw = localStorage.getItem(STORAGE_KEYS.CATALOG);
+  if (!raw) return SEED_CATALOG;
+  try {
+    const items: CatalogSong[] = JSON.parse(raw);
+    // Sort alphabetically by name
+    return items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  } catch (err) {
+    console.warn('[Storage] Catálogo corrompido no localStorage; usando lista vazia.', err);
+    return SEED_CATALOG;
+  }
+});
+
+const setlistsCache = new RevisionCache<Setlist[]>(() => {
+  const raw = localStorage.getItem(STORAGE_KEYS.SETLISTS);
+  if (!raw) return SEED_SETLISTS;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn('[Storage] Setlists corrompidos no localStorage; usando lista vazia.', err);
+    return SEED_SETLISTS;
+  }
+});
+
+let catalogIndex: Map<string, CatalogSong> | null = null;
 
 export class StorageEngine {
   static subscribeStorage(callback: RealtimeCallback) {
@@ -94,27 +125,113 @@ export class StorageEngine {
 
   static saveCatalog(catalog: CatalogSong[]) {
     localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalog));
+    catalogCache.invalidate();
+    catalogIndex = null;
     notifySubscribers();
+  }
+
+  // Tombstones de exclusão (substituem o "delete por ausência")
+  static getDeletions(): DeletionRecord[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.DELETIONS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  static recordDeletion(entityType: DeletionEntityType, entityId: string, setlistId?: string): DeletionRecord {
+    const user = this.getUser();
+    const deletions = this.getDeletions();
+    const key = deletionKey(entityType, entityId);
+
+    let record = deletions.find((d) => d.id === key);
+    if (!record) {
+      record = {
+        id: key,
+        entityType,
+        entityId,
+        userId: user.id,
+        setlistId,
+        createdAt: new Date().toISOString()
+      };
+      deletions.push(record);
+    } else {
+      record.userId = user.id;
+      record.createdAt = new Date().toISOString();
+      if (setlistId) record.setlistId = setlistId;
+    }
+
+    localStorage.setItem(STORAGE_KEYS.DELETIONS, JSON.stringify(deletions));
+    notifySubscribers();
+    return record;
+  }
+
+  // Remove apenas tombstones do usuário atual (não pode desfazer a
+  // exclusão feita por outro usuário, ex: dono do setlist).
+  static clearDeletion(entityType: DeletionEntityType, entityId: string) {
+    const user = this.getUser();
+    const key = deletionKey(entityType, entityId);
+    const deletions = this.getDeletions().filter(
+      (d) => !(d.id === key && (!d.userId || d.userId === user.id))
+    );
+    localStorage.setItem(STORAGE_KEYS.DELETIONS, JSON.stringify(deletions));
+    notifySubscribers();
+  }
+
+  // Merge tombstones vindos do Supabase (exclusões de outros dispositivos).
+  // O registro remoto vence, mas tombstones locais ainda não sincronizados
+  // não são descartados.
+  static mergeRemoteDeletions(remote: DeletionRecord[]) {
+    const local = this.getDeletions();
+    const merged = [...local];
+
+    remote.forEach((remoteRec) => {
+      const idx = merged.findIndex(
+        (d) => d.id === remoteRec.id || (d.entityType === remoteRec.entityType && d.entityId === remoteRec.entityId)
+      );
+      if (idx >= 0) {
+        merged[idx] = remoteRec;
+      } else {
+        merged.push(remoteRec);
+      }
+    });
+
+    localStorage.setItem(STORAGE_KEYS.DELETIONS, JSON.stringify(merged));
+    notifySubscribers();
+  }
+
+  // Avisos de "tom original mudou no catálogo" descartados.
+  // Mapeia catalogSongId -> tom original vigente no momento do descarte;
+  // se o tom mudar de novo, o aviso volta a aparecer.
+  static getDismissedKeyWarnings(): Record<string, string> {
+    const raw = localStorage.getItem(STORAGE_KEYS.DISMISSED_KEY_WARNINGS);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+
+  static dismissKeyWarning(catalogSongId: string, originalKey: string) {
+    const map = this.getDismissedKeyWarnings();
+    map[catalogSongId] = originalKey;
+    localStorage.setItem(STORAGE_KEYS.DISMISSED_KEY_WARNINGS, JSON.stringify(map));
   }
 
   // Catalog Management
   static getCatalog(): CatalogSong[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.CATALOG);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(SEED_CATALOG));
-      return SEED_CATALOG;
-    }
-    try {
-      const items: CatalogSong[] = JSON.parse(raw);
-      // Sort alphabetically by name
-      return items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-    } catch {
-      return SEED_CATALOG;
-    }
+    return catalogCache.get();
+  }
+
+  static getCatalogRevision(): number {
+    return catalogCache.revision;
   }
 
   static getCatalogSongById(id: string): CatalogSong | undefined {
-    return this.getCatalog().find((s) => s.id === id);
+    return this.getCatalogSongIndex().get(id);
   }
 
   static addCatalogSong(
@@ -140,8 +257,7 @@ export class StorageEngine {
     };
 
     catalog.push(newSong);
-    localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalog));
-    notifySubscribers();
+    this.saveCatalog(catalog);
     return newSong;
   }
 
@@ -159,8 +275,7 @@ export class StorageEngine {
     };
 
     catalog[index] = updatedSong;
-    localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalog));
-    notifySubscribers();
+    this.saveCatalog(catalog);
     return updatedSong;
   }
 
@@ -233,7 +348,7 @@ export class StorageEngine {
 
   static deleteCatalogSong(id: string) {
     const catalog = this.getCatalog().filter((s) => s.id !== id);
-    localStorage.setItem(STORAGE_KEYS.CATALOG, JSON.stringify(catalog));
+    this.saveCatalog(catalog);
 
     // Remove references across all setlists
     const setlists = this.getSetlists();
@@ -245,27 +360,33 @@ export class StorageEngine {
       }))
     }));
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(updatedSetlists));
-    notifySubscribers();
+    this.saveSetlists(updatedSetlists);
+
+    // Tombstones: a música e todas as referências de bloco removidas
+    this.recordDeletion('song', id);
+    setlists.forEach((st) => {
+      st.blocks.forEach((blk) => {
+        const hadReference = blk.items.some((item) => item.catalogSongId === id);
+        if (hadReference) {
+          this.recordDeletion('block_song', `${blk.id}_${id}`, st.id);
+        }
+      });
+    });
   }
 
   static saveSetlists(setlists: Setlist[]) {
     localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
+    setlistsCache.invalidate();
     notifySubscribers();
   }
 
   // Setlists Management
   static getSetlists(): Setlist[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.SETLISTS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(SEED_SETLISTS));
-      return SEED_SETLISTS;
-    }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return SEED_SETLISTS;
-    }
+    return setlistsCache.get();
+  }
+
+  static getSetlistsRevision(): number {
+    return setlistsCache.revision;
   }
 
   static getSetlistsForUser(email: string): Setlist[] {
@@ -308,8 +429,7 @@ export class StorageEngine {
     newSetlist.blocks[0].setlistId = newSetlist.id;
 
     setlists.push(newSetlist);
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return newSetlist;
   }
 
@@ -346,8 +466,7 @@ export class StorageEngine {
     };
 
     setlists.push(copy);
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return copy;
   }
 
@@ -359,15 +478,26 @@ export class StorageEngine {
     setlists[index].name = name.trim();
     setlists[index].updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return setlists[index];
   }
 
   static deleteSetlist(id: string) {
-    const setlists = this.getSetlists().filter((s) => s.id !== id);
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    const setlists = this.getSetlists();
+    const target = setlists.find((s) => s.id === id);
+    const updatedSetlists = setlists.filter((s) => s.id !== id);
+    this.saveSetlists(updatedSetlists);
+
+    // Tombstones: setlist + blocos + referências de música em cascata
+    this.recordDeletion('setlist', id);
+    if (target) {
+      target.blocks.forEach((blk) => {
+        this.recordDeletion('block', blk.id, id);
+        blk.items.forEach((item) => {
+          this.recordDeletion('block_song', `${blk.id}_${item.catalogSongId}`, id);
+        });
+      });
+    }
   }
 
   // Block Management
@@ -388,8 +518,7 @@ export class StorageEngine {
     setlist.blocks.push(newBlock);
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return newBlock;
   }
 
@@ -405,8 +534,7 @@ export class StorageEngine {
     block.theme = theme.trim();
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return block;
   }
 
@@ -415,6 +543,7 @@ export class StorageEngine {
     const setlist = setlists.find((s) => s.id === setlistId);
     if (!setlist) return;
 
+    const block = setlist.blocks.find((b) => b.id === blockId);
     setlist.blocks = setlist.blocks.filter((b) => b.id !== blockId);
     // Re-index positions
     setlist.blocks.forEach((b, idx) => {
@@ -422,8 +551,15 @@ export class StorageEngine {
     });
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
+
+    // Tombstones: bloco + referências de música em cascata
+    this.recordDeletion('block', blockId, setlistId);
+    if (block) {
+      block.items.forEach((item) => {
+        this.recordDeletion('block_song', `${blockId}_${item.catalogSongId}`, setlistId);
+      });
+    }
   }
 
   static reorderBlocks(setlistId: string, newBlockOrder: Block[]) {
@@ -434,8 +570,7 @@ export class StorageEngine {
     setlist.blocks = newBlockOrder.map((b, idx) => ({ ...b, position: idx }));
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
   }
 
   // Block Items (Songs in Block)
@@ -467,8 +602,9 @@ export class StorageEngine {
     block.items.push(newItem);
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
+    // Re-adicionar ao bloco = desfazer exclusão: remove o tombstone
+    this.clearDeletion('block_song', `${blockId}_${catalogSongId}`);
     return newItem;
   }
 
@@ -486,8 +622,7 @@ export class StorageEngine {
     item.requestedKey = requestedKey ? normalizeKeyDisplay(requestedKey) : '';
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
   }
 
   static updateBlockItemNotes(setlistId: string, blockId: string, itemId: string, notes: string) {
@@ -504,8 +639,7 @@ export class StorageEngine {
     item.notes = notes ? notes.trim() : undefined;
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
   }
 
   static removeSongFromBlock(setlistId: string, blockId: string, itemId: string) {
@@ -516,14 +650,19 @@ export class StorageEngine {
     const block = setlist.blocks.find((b) => b.id === blockId);
     if (!block) return;
 
+    const removedItem = block.items.find((i) => i.id === itemId);
     block.items = block.items.filter((i) => i.id !== itemId);
     block.items.forEach((item, idx) => {
       item.position = idx;
     });
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
+
+    // Tombstone da referência removida (chave determinística usada no banco)
+    if (removedItem) {
+      this.recordDeletion('block_song', `${blockId}_${removedItem.catalogSongId}`, setlistId);
+    }
   }
 
   static reorderBlockItems(setlistId: string, blockId: string, newItems: BlockItem[]) {
@@ -537,15 +676,14 @@ export class StorageEngine {
     block.items = newItems.map((item, idx) => ({ ...item, position: idx }));
     setlist.updatedAt = new Date().toISOString();
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
   }
 
   // Hydrate Block Items with Catalog data (name, artist, current original key)
   static hydrateBlockItems(items: BlockItem[]): BlockItem[] {
-    const catalog = this.getCatalog();
+    const index = this.getCatalogSongIndex();
     return items.map((item) => {
-      const song = catalog.find((s) => s.id === item.catalogSongId);
+      const song = index.get(item.catalogSongId);
       return {
         ...item,
         songName: song ? song.name : 'Música Removida',
@@ -555,24 +693,27 @@ export class StorageEngine {
     });
   }
 
+  static getCatalogSongIndex(): Map<string, CatalogSong> {
+    if (!catalogIndex) {
+      catalogIndex = new Map(this.getCatalog().map((s) => [s.id, s]));
+    }
+    return catalogIndex;
+  }
+
   // Join Setlist via Link
   static joinSetlistViaLink(setlistId: string, userEmail: string, role: 'edit' | 'view' = 'edit'): Setlist | null {
     const setlists = this.getSetlists();
-    console.log('[Storage] Available setlists count:', setlists.length);
     const setlist = setlists.find((s) => s.id === setlistId);
     if (!setlist) {
-      console.log('[Storage] Setlist not found in cache. ID:', setlistId);
       return null;
     }
 
     const email = userEmail.trim().toLowerCase();
-    console.log('[Storage] Setlist found. Checking owner:', setlist.ownerEmail, 'vs', email);
     if (setlist.ownerEmail.toLowerCase() === email) {
       return setlist; // User is already the owner
     }
 
-    let mem = setlist.members.find((m) => m.email.toLowerCase() === email);
-    console.log('[Storage] Member found:', !!mem);
+    const mem = setlist.members.find((m) => m.email.toLowerCase() === email);
     if (mem) {
       mem.status = 'accepted';
     } else {
@@ -586,41 +727,30 @@ export class StorageEngine {
       });
     }
 
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return setlist;
   }
 
   // Invitations
   static sendInvitation(setlistId: string, invitedEmail: string, role: 'edit' | 'view'): boolean {
     const user = this.getUser();
-    console.log('[Storage] sendInvitation: setlistId=' + setlistId + ', invitedEmail=' + invitedEmail + ', role=' + role + ', user=' + user.email);
-    
     const setlists = this.getSetlists();
-    console.log('[Storage] Found ' + setlists.length + ' setlists in localStorage');
-    
     const setlist = setlists.find((s) => s.id === setlistId);
     if (!setlist) {
-        console.error('[Storage] ERRO: Setlist não encontrado na lista local!', setlistId);
-        return false;
+      return false;
     }
-
-    console.log('[Storage] Setlist encontrado! Nome:', setlist.name, 'Membros atuais:', setlist.members?.length);
 
     const email = invitedEmail.trim().toLowerCase();
     if (email === user.email.toLowerCase()) {
-        console.error('[Storage] ERRO: Usuário tentando convidar a si mesmo');
-        return false; 
+      return false;
     }
     
     // Check existing member
     let member = setlist.members.find((m) => m.email.toLowerCase() === email);
     if (member) {
-      console.log('[Storage] Member found, updating...');
       member.role = role;
       member.status = 'pending';
     } else {
-      console.log('[Storage] Member NOT found, adding...');
       member = {
         id: crypto.randomUUID(),
         setlistId,
@@ -632,84 +762,8 @@ export class StorageEngine {
       setlist.members.push(member);
     }
 
-    console.log('[Storage] Final members list before saving:', JSON.stringify(setlist.members));
-    localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    
-    // VERIFICAÇÃO IMEDIATA
-    const verify = localStorage.getItem(STORAGE_KEYS.SETLISTS);
-    const parsedVerify = JSON.parse(verify || '[]');
-    const setlistInStorage = parsedVerify.find((s: any) => s.id === setlistId);
-    console.log('[Storage] VERIFICACAO DE PERSISTENCIA APOS SALVAR:', JSON.stringify(setlistInStorage?.members));
-
-    notifySubscribers();
-
-    // Store in invitations pool
-    const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
-    let invs: Invitation[] = invRaw ? JSON.parse(invRaw) : [];
-
-    invs = invs.filter((i) => !(i.setlistId === setlistId && i.invitedEmail.toLowerCase() === email));
-    invs.push({
-      id: crypto.randomUUID(),
-      setlistId,
-      setlistName: setlist.name,
-      ownerEmail: setlist.ownerEmail,
-      invitedEmail: email,
-      role,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    });
-
-    localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invs));
-    notifySubscribers();
+    this.saveSetlists(setlists);
     return true;
-  }
-
-  static getPendingInvitationsForUser(email: string): Invitation[] {
-    const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
-    if (!invRaw) return [];
-    try {
-      const invs: Invitation[] = JSON.parse(invRaw);
-      return invs.filter((i) => i.invitedEmail.toLowerCase() === email.toLowerCase() && i.status === 'pending');
-    } catch {
-      return [];
-    }
-  }
-
-  static getSentInvitationsFromUser(email: string): Invitation[] {
-    const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
-    if (!invRaw) return [];
-    try {
-      const invs: Invitation[] = JSON.parse(invRaw);
-      return invs.filter((i) => i.ownerEmail.toLowerCase() === email.toLowerCase());
-    } catch {
-      return [];
-    }
-  }
-
-  static respondToInvitation(invitationId: string, accept: boolean) {
-    const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
-    if (!invRaw) return;
-    let invs: Invitation[] = JSON.parse(invRaw);
-
-    const inv = invs.find((i) => i.id === invitationId);
-    if (!inv) return;
-
-    const newStatus = accept ? 'accepted' : 'refused';
-    inv.status = newStatus;
-
-    // Update member record in setlist
-    const setlists = this.getSetlists();
-    const setlist = setlists.find((s) => s.id === inv.setlistId);
-    if (setlist) {
-      const mem = setlist.members.find((m) => m.email.toLowerCase() === inv.invitedEmail.toLowerCase());
-      if (mem) {
-        mem.status = newStatus;
-      }
-      localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
-    }
-
-    localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invs));
-    notifySubscribers();
   }
 
   static revokeInvitation(setlistId: string, email: string) {
@@ -717,32 +771,7 @@ export class StorageEngine {
     const setlist = setlists.find((s) => s.id === setlistId);
     if (setlist) {
       setlist.members = setlist.members.filter((m) => m.email.toLowerCase() !== email.toLowerCase());
-      localStorage.setItem(STORAGE_KEYS.SETLISTS, JSON.stringify(setlists));
+      this.saveSetlists(setlists);
     }
-
-    const invRaw = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
-    if (invRaw) {
-      let invs: Invitation[] = JSON.parse(invRaw);
-      invs = invs.filter((i) => !(i.setlistId === setlistId && i.invitedEmail.toLowerCase() === email.toLowerCase()));
-      localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invs));
-    }
-
-    notifySubscribers();
-  }
-
-  static getSupabaseConfig(): SupabaseConfig {
-    const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-    const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-    const isConfigured = !!(envUrl.trim() && envKey.trim());
-    return {
-      url: envUrl.trim(),
-      anonKey: envKey.trim(),
-      isConnected: isConfigured,
-      enabled: isConfigured
-    };
-  }
-
-  static setSupabaseConfig() {
-    // Credentials are strictly managed via environment variables (.env).
   }
 }

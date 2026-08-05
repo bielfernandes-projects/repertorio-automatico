@@ -3,14 +3,14 @@ import { StorageEngine } from '../../lib/storage';
 import { useAppStore } from '../../lib/store';
 import { getSupabaseClient } from '../../lib/supabase';
 import { sanitizeText, isValidEmail } from '../../lib/sanitize';
-import { Music, Mail, Lock, User, ArrowRight, Sparkles, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, Sparkles, Loader2, Eye, EyeOff } from 'lucide-react';
 
 interface AuthModalProps {
   onLoginSuccess: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ onLoginSuccess }) => {
-  const { showToast } = useAppStore();
+  const showToast = useAppStore((s) => s.showToast);
   const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
   const [isLoading, setIsLoading] = useState(false);
 

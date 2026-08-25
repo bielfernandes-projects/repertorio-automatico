@@ -2,7 +2,11 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import App from './App.tsx';
+import { initMonitoring } from './lib/monitoring';
 import './index.css';
+
+// Antes de qualquer render, para capturar falhas de inicialização.
+initMonitoring();
 
 const container = document.getElementById('root');
 if (!container) {

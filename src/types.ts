@@ -25,6 +25,7 @@ export interface CatalogSong {
   artist: string;
   originalKey: string;
   slugOverride?: string;
+  bpm?: number; // Manual. Usado na transição entre músicas do mesmo Bloco (1-400)
   documents?: SongDocument[]; // Up to 5 documents (sheet music, partituras, handwritten chords)
   createdAt: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ export interface BlockItem {
   position: number;
   originalKeyAtAssignment?: string;
   notes?: string; // Observação para a música nesta apresentação
+  transitionNote?: string; // Nota/acorde de passagem para a próxima música do Bloco
   // Hydrated helper fields
   songName?: string;
   songArtist?: string;
@@ -80,6 +82,12 @@ export interface Setlist {
   updatedAt: string;
   blocks: Block[];
   members: SetlistMember[];
+  // Ponto Eletrônico Visual: qual Bloco/Item a banda está tocando agora.
+  // Estado persistido (não efêmero) para que quem entra atrasado ou
+  // reconecta leia o ponto direto, sem reconciliação no cliente.
+  currentBlockId?: string;
+  currentItemId?: string;
+  currentPointUpdatedAt?: string;
 }
 
 export interface ToastMessage {
@@ -113,4 +121,51 @@ export interface DeletionRecord {
   userId: string; // dono da exclusão (quem apagou)
   setlistId?: string; // setlist relacionado (blocos e músicas de bloco)
   createdAt: string;
+}
+
+// =====================================================
+// Cifra e letra (ADR 0009)
+// O app busca, parseia e renderiza nativamente, em vez de
+// abrir o Cifra Club num iframe.
+// =====================================================
+
+export type CifraSource = 'cifraclub' | 'lrclib';
+
+export interface CifraChord {
+  position: number; // índice do caractere em `text` sobre o qual o acorde incide
+  chord: string;
+}
+
+// Uma linha da música. Separar o acorde do texto (em vez de
+// embutir inline no estilo ChordPro) é o que permite reposicionar
+// os acordes quando a letra é exibida em fonte gigante.
+export interface CifraLine {
+  text: string;
+  chords: CifraChord[];
+}
+
+// Entrada do cache compartilhado, endereçada por slug de Artista/Música
+// e comum a todos os Músicos — não é o cache de um usuário.
+export interface CifraCache {
+  id: string;
+  artistSlug: string;
+  songSlug: string;
+  source: CifraSource;
+  originalKey?: string;
+  lines: CifraLine[];
+  syncedLyrics?: string; // LRC com timestamp por linha, quando a fonte fornece
+  durationSeconds?: number;
+  sourceUrl?: string; // usado para creditar a fonte na tela
+  fetchedAt: string;
+}
+
+// Link de leitura anônima (ordem + tons). Distinto do link de
+// colaborador, que exige login e gera Membro.
+export interface SetlistPublicLink {
+  id: string;
+  setlistId: string;
+  shortId: string;
+  createdBy: string;
+  createdAt: string;
+  revokedAt?: string;
 }

@@ -8,7 +8,7 @@
 -- =====================================================
 
 create table if not exists public.deletions (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   entity_type text not null check (entity_type in ('song', 'setlist', 'block', 'block_song')),
   entity_key text not null,
   deleted_by uuid references public.profiles(id) on delete cascade not null,

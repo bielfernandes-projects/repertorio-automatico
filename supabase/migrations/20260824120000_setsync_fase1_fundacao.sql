@@ -5,6 +5,11 @@
 -- a camada de sync atual (merge + tombstones) continua
 -- funcionando sem saber que estas colunas existem.
 --
+-- Usa gen_random_uuid() (nativa do Postgres 13+) em vez de
+-- uuid_generate_v4(): a extensão uuid-ossp vive no schema
+-- `extensions`, que não está no search_path do runner de
+-- migrations — funciona no SQL editor e falha no db push.
+--
 -- Cobre: BPM e nota de passagem (PLAN.md 2.4 / 4.5),
 -- ponto eletrônico do palco (4.2 / ADR 0008), cache de
 -- cifra (4.3 / ADR 0009) e link público (4.7).
@@ -111,7 +116,7 @@ grant execute on function public.set_setlist_current_point(uuid, uuid, uuid) to 
 -- do Modo Solo (backlog) sem refazer o cache depois.
 -- -----------------------------------------------------
 create table if not exists public.cifras_cache (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   artist_slug text not null,
   song_slug text not null,
   source text not null check (source in ('cifraclub', 'lrclib')),
@@ -156,7 +161,7 @@ create policy "authenticated_select_cifras_cache"
 -- — e não fique aberta durante fases em que nada a usa.
 -- -----------------------------------------------------
 create table if not exists public.setlist_public_links (
-  id uuid default uuid_generate_v4() primary key,
+  id uuid default gen_random_uuid() primary key,
   setlist_id uuid references public.setlists(id) on delete cascade not null,
   short_id text not null unique,
   created_by uuid references public.profiles(id) on delete cascade not null,

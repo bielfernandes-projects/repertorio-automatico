@@ -1,444 +1,159 @@
-# Repertório Automático — Documentação do Aplicativo
+# Repertório Automático
 
-Este documento serve como a documentação de referência oficial do **Repertório Automático**, detalhando a visão de produto, as regras do modelo de domínio, a arquitetura e as decisões técnicas implementadas no código.
+Organizador e gerenciador de repertórios musicais para bandas, músicos solo e ministérios. O app centraliza em um só lugar o acervo de cada músico e a montagem de seus shows, permitindo consultar em segundos o tom solicitado de cada música para cada apresentação e colaborar com outros integrantes do grupo.
 
----
+## Limite de Escopo
 
-## 1. Visão Geral do Produto
+O aplicativo busca, cacheia e renderiza nativamente letra e cifra, transpostas para o Tom solicitado, e permite anexar partituras próprias em PDF ou imagem. O conteúdo é obtido de fontes externas (Cifra Club para cifra, LRCLIB para letra) e sempre creditado com link para a página de origem. Ver ADR 0009 — até então o app não armazenava cifra alguma, apenas gerava URLs externas exibidas em iframe.
 
-O **Repertório Automático** é um organizador e gerenciador de repertórios musicais *mobile-first* voltado para bandas, músicos solo e ministérios que hoje sofrem com a desorganização de pastas de cifras, planilhas ou blocos de notas. 
+## Idioma
 
-### Objetivos Principais
-*   **Centralização**: Servir como ponto único de controle do repertório geral de um músico ou grupo.
-*   **Agilidade em Ensaios/Apresentações**: Resolver instantaneamente as dúvidas de tons de execução de cada música ("Qual tom o vocalista pediu para esta apresentação?").
-*   **Colaboração Simplificada**: Permitir que os integrantes de uma banda acessem, configurem e visualizem o setlist sincronizado.
-
-### Limitação de Escopo
-O aplicativo **não** armazena cifras internamente. Em vez disso, gera dinamicamente e gerencia links externos de cifra (Cifra Club) ou permite a anexação de arquivos de partituras/cifras próprias em formato PDF e imagem.
-
-*   **Nome do App**: Repertório Automático
-*   **Idioma**: Português Brasileiro (PT-BR)
-*   **Padrão de Design**: Escuro por padrão (*Dark Mode*), com visual moderno, gradientes sutis e microinterações fluidas.
+O app é distribuído em **Português Brasileiro (PT-BR)** e **Inglês (EN)**. Strings ubíquas em PT-BR são a fonte de verdade do glossário abaixo; a tradução para EN segue os mesmos termos canonicalizados.
 
 ---
 
-## 2. Modelo de Domínio
-
-O domínio de negócios do aplicativo é estruturado em torno de três entidades centrais: **Catálogo**, **Setlist** e **Bloco**.
-
-```mermaid
-classDiagram
-    class UserProfile {
-        +id: UUID
-        +email: string
-        +name: string
-    }
-    class CatalogSong {
-        +id: string
-        +userId: string
-        +name: string
-        +artist: string
-        +originalKey: string
-        +slugOverride: string
-        +documents: SongDocument[]
-    }
-    class SongDocument {
-        +id: string
-        +name: string
-        +type: "pdf" | "image" | "other"
-        +dataUrl: string
-        +fileSize: number
-    }
-    class Setlist {
-        +id: string
-        +ownerId: string
-        +ownerEmail: string
-        +name: string
-        +blocks: Block[]
-        +members: SetlistMember[]
-    }
-    class Block {
-        +id: string
-        +setlistId: string
-        +name: string
-        +theme: string
-        +position: number
-        +items: BlockItem[]
-    }
-    class BlockItem {
-        +id: string
-        +blockId: string
-        +catalogSongId: string
-        +requestedKey: string
-        +position: number
-        +originalKeyAtAssignment: string
-        +notes: string
-    }
-    UserProfile "1" --> "*" CatalogSong
-    UserProfile "1" --> "*" Setlist
-    CatalogSong "1" --> "*" SongDocument
-    Setlist "1" --> "*" Block
-    Block "1" --> "*" BlockItem
-    BlockItem --> "1" CatalogSong : references
-```
-
-### 2.1. Catálogo Geral
-É o acervo completo e privado de músicas cadastradas de cada usuário.
-*   **Campos**: `nome`, `artista` (obrigatório para busca automatizada de cifras), `tom original` (texto livre, ex: "C", "Dó#m", "Sol maior").
-*   **Organização**: Exibido em lista ordenada alfabeticamente. Suporta busca em tempo real por nome ou artista.
-*   **Partituras e Anexos (Documentos)**:
-    *   Cada música suporta a anexação de até **5 arquivos** (PDFs ou Imagens).
-    *   Limite de tamanho: **10MB por arquivo**.
-    *   Os anexos são armazenados localmente e na nuvem como base64 strings (`dataUrl`).
-    *   O app disponibiliza um modal lightbox e visualizador integrado via `iFrame` (para PDFs) ou tags de imagem com ação de download.
-
-### 2.2. Setlist
-Uma coleção nomeada correspondente a um show, ensaio ou evento específico.
-*   **Campos**: `nome` (único por usuário dono), `blocos`, `membros`.
-*   **Duplicação**: Qualquer usuário proprietário ou convidado com acesso pode duplicar um setlist, gerando um clone inteiro sob sua propriedade (com blocos e músicas clonadas).
-*   **Compartilhamento**: Apenas o dono pode convidar novos membros, excluir o setlist ou gerenciar permissões de acesso.
-
-### 2.3. Bloco
-Agrupamentos conceituais ou de ritmos organizados dentro de um setlist.
-*   **Campos**: `nome` (não-vazio, único dentro do setlist), `tema` (texto livre), `posição`.
-*   **Temas**: O tema digitado no bloco gera um *badge* visual com uma cor gerada de forma determinística por meio de um algoritmo de hash de string.
-*   **Reordenação**: Suporta arrastar e soltar (drag & drop) para ordenar a sequência de blocos dentro do setlist.
-
-### 2.4. Itens do Bloco (Referência de Música)
-Relação entre uma música do catálogo e um bloco específico do setlist.
-*   **Campos**: `música_id`, `tom solicitado` (opcional e texto livre), `notes` (observação opcional).
-*   **Regras de Negócio**:
-    *   O **tom solicitado vive na referência** e não no catálogo. Isso permite tocar a mesma música em tons diferentes dependendo da apresentação ou do cantor do dia.
-    *   **Observações/Notas da Apresentação**: É possível adicionar uma observação de texto livre (ex: "Começa do solo de violão", "Crescente em colcheia") para a música na referência. Ela pode ser digitada no momento da adição ou editada inline no bloco focado.
-    *   **Sem duplicação**: Não é permitido inserir a mesma música do catálogo duas vezes no mesmo bloco.
-    *   Se o tom original for alterado no catálogo, o tom solicitado no bloco não é modificado, mas o item recebe uma badge discreta de atenção indicando que o tom original foi alterado.
-
----
-
-## 3. Sincronização e Colaboração
-
-O Repertório Automático é colaborativo por setlist, implementando regras de acesso baseadas em perfis.
-
-### 3.1. Níveis de Permissão
-*   **Owner (Dono)**: Acesso total. Exclui o setlist, convida/revoga integrantes, edita blocos, músicas e referências. Controla também a música correspondente no catálogo geral.
-*   **Edit (Editor)**: Permissões de montagem. Adiciona/remove músicas de blocos, reordena itens, ajusta os tons solicitados das músicas e cria/exclui blocos dentro do setlist.
-*   **View (Visualizador)**: Modo leitura. Apenas consulta a ordem do show, visualiza os tons solicitados, abre cifras e consulta arquivos/anexos de partituras.
+## Language
 
-### 3.2. Convites e Compartilhamento de Acesso
-O aplicativo implementa dois métodos de compartilhamento de setlists:
-1.  **Convite por E-mail**: O dono informa o e-mail do convidado. Se a conta já existe, o setlist é vinculado imediatamente. Se não, um convite de status pendente é criado, aguardando que o convidado crie sua conta para aceitá-lo/recusá-lo.
-2.  **Links de Acesso Rápido & WhatsApp**:
-    *   Na tela de perfil, o proprietário pode copiar um link direto de compartilhamento estruturado como `?setlist=SETLIST_ID&role=edit|view`.
-    *   O app oferece um botão rápido para disparar o link preenchido em uma mensagem direta no WhatsApp.
-    *   Ao acessar a aplicação através desse link, se o usuário estiver logado, o app faz a associação de associação automática (`joinSetlistViaLink`) adicionando o setlist à sua lista.
+### Entidades de domínio
 
-### 3.3. Edição Simultânea e Realtime
-*   **Sincronização**: Conectado à rede do Supabase Realtime, mudanças de estrutura são sincronizadas em tempo real.
-*   **Resolução de Conflitos**: Estrutura de campos independentes evita colisões comuns. Se dois editores salvarem o mesmo campo simultaneamente, aplica-se a regra de *Last-Write-Wins* (última escrita prevalece).
+**Catálogo**:
+Acervo privado de músicas cadastradas por um Músico. Cada música tem Nome, Artista e Tom de origem.
+_Evitar_: Biblioteca, Coleção, Lista de músicas
 
-### 3.4. Arquitetura de Sincronização (Sync Layer)
+**Música do Catálogo**:
+Uma entrada do catálogo. Pertence a exatamente um Músico e é referenciada por zero ou mais Itens de Bloco.
+_Evitar_: Cifra, Canção
 
-O app implementa duas camadas complementares de sincronização com o Supabase para garantir consistência de dados mesmo em cenários offline:
+**Documento**:
+Arquivo de partitura anexado a uma Música do Catálogo (PDF ou imagem). Limite de 5 arquivos por música.
+_Evitar_: Anexo, Partitura (genérico), Arquivo, PDF
 
-#### Sincronização Explícita (Obrigatória)
-Toda operação de escrita relevante (criar bloco, adicionar música, editar tom, mover item, convidar membro) executa `syncLocalDataToSupabase()` **imediatamente após** a mutação local. O resultado é exibido ao usuário via toast (sucesso ou erro). Essa camada substitui a dependência exclusiva do background sync, garantindo que nenhuma alteração relevante deixe de ser persistida na nuvem.
+**Setlist**:
+Coleção nomeada que representa um show, ensaio ou evento. Possui Blocos e Membros. Tem exatamente um Dono.
+_Evitar_: Lista, Repertório (sinônimo do app todo)
 
-**Arquivos que implementam sync explícito**: `SetlistDetail.tsx`, `FocusedBlockView.tsx`, `SetlistsList.tsx`.
+**Bloco**:
+Agrupamento conceitual de músicas dentro de um Setlist (ex: "Pagode Lado A", "Comunhão"). Possui Nome, Tema e uma Posição ordenável.
+_Evitar_: Seção, Parte, Grupo
 
-#### Sincronização Automática em Background (Fallback)
-Toda alteração via `StorageEngine` dispara `triggerAutoBackgroundSync()` com debounce de 1200ms. O auto-sync verifica se um sync explícito já ocorreu nos últimos 3 segundos para evitar duplicação. Erros são logados no console, mas não interrompem o fluxo do usuário.
+**Tema de Bloco**:
+Texto livre que nomeia o caráter musical ou litúrgico do Bloco. Gera um badge visual cuja cor é determinística em função do texto.
+_Evitar_: Categoria, Tag, Etiqueta
 
-### 3.3. Edição Simultânea e Realtime
-*   **Sincronização**: Conectado à rede do Supabase Realtime, mudanças de estrutura são sincronizadas em tempo real.
-*   **Resolução de Conflitos**: Estrutura de campos independentes evita colisões comuns. Se dois editores salvarem o mesmo campo simultaneamente, aplica-se a regra de *Last-Write-Wins* (última escrita prevalece).
+**Item de Bloco**:
+Referência de uma Música do Catálogo dentro de um Bloco concreto. Possui Tom solicitado, Tom de referência (snapshot do Tom de origem no instante da atribuição), Observação e Posição.
+_Evitar_: Música no show, Item
 
-### 3.4. Arquitetura de Sincronização (Sync Layer)
+**Observação de Item**:
+Texto livre anexado a um Item de Bloco com instruções para a performance (ex: "Começa do solo", "Crescente em colcheia").
+_Evitar_: Nota (ambíguo), Comentário, Descrição
 
-O app implementa duas camadas complementares de sincronização com o Supabase para garantir consistência de dados mesmo em cenários offline:
+### Tons
 
-#### Sincronização Explícita (Obrigatória)
-Toda operação de escrita relevante (criar bloco, adicionar música, editar tom, mover item, convidar membro) executa `syncLocalDataToSupabase()` **imediatamente após** a mutação local. O resultado é exibido ao usuário via toast (sucesso ou erro). Essa camada substitui a dependência exclusiva do background sync, garantindo que nenhuma alteração relevante deixe de ser persistida na nuvem.
+**Tom de origem**:
+Tom em que a música está cadastrada no Catálogo. Editável, é o tom "real" da música para o Músico dono.
+_Evitar_: Tom original (ambíguo), Tom real, Key
 
-**Arquivos que implementam sync explícito**: `SetlistDetail.tsx`, `FocusedBlockView.tsx`, `SetlistsList.tsx`.
+**Tom de referência**:
+Snapshot do Tom de origem no instante em que a música foi adicionada a um Bloco. Não muda quando o Tom de origem é editado posteriormente.
+_Evitar_: Tom original no bloco, Tom fixo, Snapshot
 
-#### Sincronização Automática em Background (Fallback)
-Toda alteração via `StorageEngine` dispara `triggerAutoBackgroundSync()` com debounce de 1200ms. O auto-sync verifica se um sync explícito já ocorreu nos últimos 3 segundos para evitar duplicação. Erros são logados no console, mas não interrompem o fluxo do usuário.
+**Tom solicitado**:
+Tom que o cantor pediu para tocar naquela apresentação específica. Vive no Item de Bloco, não no Catálogo — a mesma música pode ser solicitada em tons diferentes em blocos diferentes.
+_Evitar_: Tom pedido, Tom de execução, Tone
 
-#### Estratégia de Merge na Inicialização
-Ao carregar o app (`App.tsx`), dados remotos e locais são mesclados usando `updatedAt` como critério — o item mais recente vence. Após o merge, o resultado completo é enviado ao Supabase. Isso evita perda de dados offline e garante que dados locais não sincronizados (ex: blocos criados antes das correções) sejam enviados na primeira oportunidade.
+**Drift**:
+Diferença entre o Tom de origem atual e o Tom de referência. Indica que o Tom de origem foi alterado no Catálogo depois que o Item foi fixado no Bloco, e que o Tom solicitado pode precisar ser revisado.
+_Evitar_: Descompasso, Diferença de tom, Desvio
 
-#### Proteção de Ownership
-Apenas o dono do setlist pode sincronizar blocos, músicas e membros para a nuvem. Setlists compartilhados dos quais o usuário não é dono são ignorados pelo sync, prevenindo blocos órfãos e violações de RLS.
+### Membros e compartilhamento
 
-#### Correção de Compartilhamento e RLS via Link (Julho 2026)
-O sistema de convites e compartilhamento de setlists via link foi aprimorado com as seguintes soluções definitivas:
-1. **Ativação de Link no Supabase (`enableSetlistLinkShare`)**: Ao clicar em "Copiar Link" ou "Enviar no WhatsApp", a aplicação insere um registro sentinela `__link_share__` na tabela `setlist_invites`.
-2. **Políticas de RLS Atualizadas**: As políticas RLS do Supabase (`setlists_select`, `blocks_select`, `block_songs_select` e `songs_select_shared`) foram configuradas para validar a existência desse registro `__link_share__`. Isso libera o acesso de leitura para qualquer usuário autenticado que possua o link do setlist, bem como a leitura das músicas do setlist.
-3. **Persistência de Membro no Convidado (`selfJoinSetlistAsMember`)**: Quando o convidado abre o link, o aplicativo executa `selfJoinSetlistAsMember()`, que faz a inserção direta do convidado na tabela `setlist_members` no Supabase. Isso contorna a limitação onde a sincronização em lote (`syncLocalDataToSupabase`) ignorava setlists dos quais o usuário logado não fosse o dono.
+**Músico**:
+Usuário autenticado do app. Possui E-mail e Nome de exibição. Pode ser Dono, Editor, Visualizador ou Convidado dependendo do Setlist.
+_Evitar_: Usuário (ambíguo com usuários anônimos), Conta
 
----
+**Dono**:
+Músico que criou o Setlist. Pode convidar, revogar, editar tudo, excluir o Setlist e duplicá-lo. Indissociável do Setlist.
+_Evitar_: Admin, Criador, Owner
 
+**Editor**:
+Membro de um Setlist convidado com papel de edição. Pode montar (adicionar/remover músicas, reordenar itens, criar/excluir Blocos, editar Tons solicitados e Observações), mas não convida nem exclui o Setlist.
+_Evitar_: Editor (subset de permissões), Co-dono
 
-## 4. Integração de Cifras Externas
-
-A geração e a renderização de cifras dependem da integração com o site **Cifra Club**.
+**Visualizador**:
+Membro de um Setlist convidado com papel de leitura. Consulta a ordem, Tons solicitados, abre cifras e Documents, mas não edita.
+_Evitar_: Viewer, Convidado sem permissão
 
-### 4.1. Construção da URL de Cifra
-A URL base é montada dinamicamente:
-`https://www.cifraclub.com.br/{slug-artista}/{slug-musica}/`
-
-*   **Slug Automatizada**: O texto do nome da música e do artista passa por um normalizador que remove acentos, retira caracteres não-alfanuméricos e substitui espaços por hifens.
-*   **Customização (Slug Override)**: Caso a slug gerada não corresponda ao link correto no Cifra Club, o usuário pode configurar um `slugOverride` editando o campo diretamente no modal de cifras in-app ou no catálogo. **Inteligência ao colar links**: Se o usuário colar uma URL completa do Cifra Club no campo de slug, o app extrai automaticamente os slugs do artista e da música e os atualiza de forma apropriada, resolvendo o problema de cifras não encontradas.
-
-### 4.2. Transposição Automatizada
-O aplicativo calcula a distância de semitons relativos entre o **Tom Original** cadastrado no catálogo e o **Tom Solicitado** cadastrado na referência:
-1.  Faz o mapeamento e tradução dos termos livres (ex: "Dó#" e "C#" viram índice `1`).
-2.  Subtrai o índice do tom solicitado pelo original modulo 12.
-3.  Calcula a mudança relativa na escala de `-6` a `+6` semitons (compatível com a transposição do Cifra Club).
-4.  Acrescenta o parâmetro `?tom={N}` ao final do link da cifra para que ela já carregue transposta na tela.
-
-### 4.3. Visualização com Fallback de Webview
-As cifras são exibidas em um modal in-app que contém um `iframe`. 
-*   **Tratamento de Bloqueio**: Como o Cifra Club restringe renderização em iFrames por cabeçalhos `X-Frame-Options` em certos dispositivos/navegadores, o app monitora falhas de renderização.
-*   **Fallback**: Caso o carregamento falhe, exibe-se uma tela informativa recomendando que o usuário clique no botão para abrir a cifra diretamente em um navegador externo do sistema.
-
----
-
-## 5. Interface, UX e Estado
-
-### 5.1. Roteamento e Estrutura de Abas
-O app utiliza uma navegação por abas na barra inferior (`BottomNav`) para gerenciar as rotas:
-*   `ListMusic` (Setlists)
-*   `Music` (Catálogo Geral)
-*   `User` (Perfil de Usuário)
-
-### 5.2. Padrões de Interação e UI
-*   **Modais / Bottom Sheets**: Toda ação de criação e configuração (adicionar música, criar bloco, convidar integrante) é executada por modais suspensos, evitando redirecionamentos que tiram o músico do seu contexto.
-*   **Edição Inline**: Nomes de setlists e tons solicitados podem ser editados com um clique simples sobre o texto, que se transforma em um campo de entrada e é atualizado ao pressionar Enter ou perder o foco.
-*   **Desfazer Rápido (Undo)**: Exclusões pontuais (ex: retirar música do bloco) disparam um toast com duração de 5 segundos contendo um botão de "Desfazer".
-
-### 5.3. PWA (Progressive Web App) e Offline
-*   **Instalação**: O app se comporta como um aplicativo nativo no celular. O botão "Instalar" na aba de perfil monitora o evento `beforeinstallprompt` do navegador.
-*   **Funcionamento Offline**: O aplicativo armazena todos os setlists ativos e catálogo em um cache local. Em caso de perda de conexão:
-    *   Um banner persistente `OfflineBanner` surge no topo da tela.
-    *   O app entra em modo de leitura offline estruturado, permitindo consultar a ordem e os tons das músicas sem acesso à internet, suspendendo novos salvamentos em nuvem.
-
-### 5.4. Error Boundary e Resiliência
-*   O componente raiz é envelopado por um `ErrorBoundary` global. Em caso de erro fatal de execução do React, o usuário visualiza uma tela de alerta amigável contendo um botão para recarregar a aplicação de forma limpa.
-
----
-
-## 6. Arquitetura e Stack Técnica
-
-A estrutura técnica do projeto baseia-se em uma arquitetura limpa focada em desempenho e sincronização background:
-
-| Camada | Tecnologia |
-|---|---|
-| **Core Framework** | React 19 + TypeScript + Vite |
-| **Banco de Dados & Auth** | Supabase (PostgreSQL + Auth + Realtime) |
-| **Estilização** | Tailwind CSS v4 |
-| **Biblioteca de Ícones** | Lucide React |
-| **Animações** | Motion (Framer Motion) |
-| **Gerenciamento de Estado** | Zustand (estado volátil de UI, toasts e modais) |
-| **Mecanismo de Cache** | `StorageEngine` (abstração de `localStorage`) |
-| **Métricas & Analytics** | Vercel Analytics (`@vercel/analytics`) |
-
-### 6.1. Sincronização em Background (Debounce)
-Sempre que uma modificação local é executada, o `StorageEngine` sinaliza um temporizador interno de background (`triggerAutoBackgroundSync` com debounce de **1200ms**). Caso o usuário esteja online e com credenciais Supabase válidas, os dados do localStorage são convertidos e enviados automaticamente para o banco remoto em lote de forma transparente.
-
-### 6.2. Mapeamento de IDs Determinísticos (Helper `toUUID`)
-No banco de dados Supabase (PostgreSQL), os registros utilizam tipos de chaves primárias `uuid`. A fim de permitir o funcionamento offline de criação com IDs simplificados (Ex: `song_01`, `setlist_01`), o app implementa a função `toUUID()`. Este helper cria um hash determinístico da string de entrada, garantindo que o mesmo ID de texto local resulte sempre em um UUID v4 compatível e idêntico para a inserção correta no banco de dados.
-
-### 6.3. Esquema de Tabelas (Supabase SQL)
-```sql
--- Perfis de Usuário
-create table if not exists public.profiles (
-  id uuid references auth.users on delete cascade primary key,
-  display_name text not null default '',
-  email text,
-  created_at timestamp with time zone default now() not null
-);
-
--- Músicas do Catálogo
-create table if not exists public.songs (
-  id uuid default uuid_generate_v4() primary key,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  name text not null,
-  artist text not null,
-  original_key text not null default '',
-  slug text not null default '',
-  cifra_url text,
-  documents jsonb default '[]'::jsonb,
-  created_at timestamp with time zone default now() not null
-);
-
--- Setlists
-create table if not exists public.setlists (
-  id uuid default uuid_generate_v4() primary key,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  name text not null,
-  created_at timestamp with time zone default now() not null,
-  updated_at timestamp with time zone default now() not null,
-  unique(user_id, name)
-);
-
--- Blocos
-create table if not exists public.blocks (
-  id uuid default uuid_generate_v4() primary key,
-  setlist_id uuid references public.setlists(id) on delete cascade not null,
-  name text not null,
-  theme text not null default '',
-  position integer not null default 0,
-  created_at timestamp with time zone default now() not null
-);
-
--- Músicas do Bloco (Referências)
-create table if not exists public.block_songs (
-  id uuid default uuid_generate_v4() primary key,
-  block_id uuid references public.blocks(id) on delete cascade not null,
-  song_id uuid references public.songs(id) on delete cascade not null,
-  position integer not null default 0,
-  requested_key text,
-  notes text,
-  created_at timestamp with time zone default now() not null,
-  unique(block_id, song_id)
-);
-
--- Migração caso a tabela já exista:
--- alter table public.block_songs add column if not exists notes text;
-
--- Integrantes do Setlist
-create table if not exists public.setlist_members (
-  id uuid default uuid_generate_v4() primary key,
-  setlist_id uuid references public.setlists(id) on delete cascade not null,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  role text not null default 'viewer' check (role in ('owner', 'editor', 'viewer')),
-  created_at timestamp with time zone default now() not null,
-  unique(setlist_id, user_id)
-);
-
--- Convites
-create table if not exists public.setlist_invites (
-  id uuid default uuid_generate_v4() primary key,
-  setlist_id uuid references public.setlists(id) on delete cascade not null,
-  inviter_id uuid references public.profiles(id) on delete cascade not null,
-  invitee_email text not null,
-  status text not null default 'pending' check (status in ('pending', 'accepted', 'declined')),
-  created_at timestamp with time zone default now() not null
-);
-```
-
-
-## Atualização de Branding e Autenticação (Julho 2026)
-- Alteração da logo padrão para a logo oficial (preta sobre fundo branco em todas as telas).
-- Correção das cores do Modal de Autenticação, padronizando com o roxo (purple-600) do app.
-- Adição dos favicons e web manifests completos para PWA e navegadores.
-- Script gerado e executado para salvar 17 músicas extraídas do cache local do usuário e inseridas diretamente na tabela Supabase.
-
-## Correções de Responsividade e Estabilidade (Julho 2026)
-
-### Bloco Focado — Nome das Músicas no Mobile
-- Layout do cartão alterado de `flex items-center justify-between` para `flex flex-col md:flex-row md:items-center`.
-- Mobile: `[01. Nome | Tom]` na linha 1, `[ações]` na linha 2 (com `border-t`).
-- Desktop: `[01. Nome]` inline com `[Tom + ações]` (inalterado).
-- Extraídos `ItemActionButtons` e `KeyBadgeDisplay` como sub-componentes para evitar duplicação de JSX.
-
-### Bloco Focado — Remoção do Header Superior
-- Removida a div de informações do bloco (`bg-slate-900/90`) que ocupava espaço excessivo no mobile.
-- O nome do bloco já é exibido no canto superior direito (`Header.tsx`).
-- Contagem de músicas e botão "Adicionar Música" movidos para o final da lista de músicas.
-- Variável não utilizada `themeStyle` e import de `getThemeColorStyle` removidos.
-
-### Visualização de Documentos (PDF / Imagens)
-- **Upload**: Funcionalidade inalterada — até 5 arquivos (10MB cada), armazenados como `dataUrl` base64.
-- **Preview de Imagens**: `<img>` tag com `dataUrl`, funcionando consistentemente.
-- **Preview de PDFs**: Corrigido de `dataUrl` direto no `<iframe>` para `Blob URL` via `dataUrlToBlobUrl()`, que tem compatibilidade muito superior no mobile (iOS Safari bloqueava data URIs em iframes).
-- **Fallback**: Se o iframe de PDF falhar, exibe opção "Abrir Externamente" com fallback visual (mesmo padrão do CifraWebviewModal).
-- **Clique na linha**: Toda a linha do documento é clicável para abrir preview, não apenas o ícone de olho.
-- **Limpeza de memória**: `URL.revokeObjectURL()` ao fechar preview.
-- CSP em `vercel.json` atualizado com `blob:` em `frame-src`.
-
-### Service Worker (sw.js)
-- Corrigido `event.respondWith(undefined)` no handler de fetch — o catch retornava `undefined` para recursos não cacheados que não fossem navegação (ex: Google Fonts), causando erro "passou promise com valor undefined".
-- Agora retorna `new Response('Offline', { status: 503 })` como fallback.
-- Log de erro de registro melhorado no `index.html`.
-
-### Iframe de Cifras (CifraWebviewModal)
-- Removido `allow-same-origin` e `allow-scripts` do atributo `sandbox` do iframe de cifras. Antes: `allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation`. Depois: `allow-popups allow-forms allow-storage-access-by-user-activation`. A remoção coloca o iframe em unique origin, impedindo frame-busting via scripts do CifraClub.
-
-### Resiliência do Root DOM
-- `main.tsx` agora verifica se o elemento `#root` existe antes de chamar `createRoot()`. Se não existir (causado por extensões como `spoofer.js` que removem o `#root` ou corrompem o contexto), o elemento é recriado antes da chamada.
-- Corrige o React error #299 ("Target container is not a DOM element") que aparecia em produção em alguns navegadores com extensões instaladas.
-
-### PWA — Nome do App e Instalação
-- **`site.webmanifest`**: Corrigido definitivamente o conteúdo — `name`, `short_name`, `theme_color` e `background_color` estavam incorretos (vazios ou branco), fazendo o SO mostrar "Site". Atualizado para `"name":"Repertório Automático"`, `"short_name":"Repertório"`, `theme_color: "#0f172a"`, `background_color: "#090d16"`.
-- **Meta tags**: Adicionados `apple-mobile-web-app-title` e `application-name` no `index.html`.
-- **Botão "Instalar App no Celular"**: Agora abre um modal com instruções detalhadas para Android (Chrome), iPhone/iPad (Safari) e Computador, em vez de um toast curto com mensagem cortada.
-- Captura global do evento `beforeinstallprompt` antes do React montar para não perder o evento que dispara cedo.
-- Detecta `display-mode: standalone` para informar quando o app já está instalado.
-
-## Correções de Colaboração e Iframe (Julho 2026)
-
-### Dashboard e Separação de Setlists
-- Separação clara na lista de setlists (`SetlistsList.tsx`) entre "Meus Setlists" e "Compartilhados Comigo".
-- Setlists compartilhados agora exibem o nome do dono original e o nível de permissão (View/Edit), com a remoção de botões destrutivos (Duplicar/Excluir) nessas visualizações.
-
-### Sincronização de Membros On-Demand
-- Adicionada a função `fetchSetlistMembers` no `supabase.ts` para buscar membros ativos de um setlist específico em tempo real.
-- O owner agora visualiza, ao abrir o modal de compartilhamento, a lista atualizada de integrantes que acessaram via link, superando a limitação de exigir recarregamento do app para atualização.
-
-### Escrita Colaborativa (Editor Member Sync)
-- Implementada a função `syncMemberEditsToSupabase` no `supabase.ts` para permitir que usuários com permissão "Edit" salvem modificações na nuvem (adição de blocos, músicas e edição de tons/notas).
-- Modificado o guard principal de sincronização para, quando o usuário não for o owner, acionar a sincronia via block-level changes em vez de upsert no setlist principal (que continua restrito ao owner).
-- Elaboradas *Row Level Security (RLS) policies* específicas permitindo `insert/update` nas tabelas `blocks` e `block_songs` para usuários associados como "editor" no setlist.
-
-### Estabilidade do Iframe CifraClub
-- CifraClub frequentemente bloqueia iframes via `SameSite` / `X-Frame-Options`. 
-- Adicionado fallback visual padrão em `CifraWebviewModal.tsx` recomendando "Abrir no Navegador" via `window.open` para garantir acesso ao conteúdo.
-- O Iframe continua carregando em background; se conseguir (ex. com certas extensões), é renderizado e oculta o fallback, otimizando o fluxo sem quebrar a UI.
-
-### Sincronização CRUD e Mapeamento de Membros por E-mail
-- Adicionada a coluna `email` à tabela `profiles` para mapear corretamente usuários convidados e associados a setlists. Antes, a ausência do e-mail causava problemas de ambiguidade e falha de associação, fazendo o setlist desaparecer do dashboard de membros convidados após o recarregamento.
-- Implementada a propagação de deleção (DELETE) completa no `src/lib/supabase.ts` (`syncLocalDataToSupabase`), garantindo que itens (setlists, blocos, músicas) apagados localmente também sejam removidos fisicamente da base de dados na nuvem, prevenindo o reaparecimento de itens zumbis após recarregar a página.
-- Atualizado o payload de `upsert` na tela de edição de perfil e inicialização de sessão para registrar e manter o campo `email` atualizado junto com o `display_name`.
-
-## Correções de Segurança (Julho 2026)
-
-### Validação Estrita de Upload de Anexos
-- `SongDocumentsModal.tsx` agora importa e utiliza `isAllowedFileType()` de `src/lib/sanitize.ts` para validar tanto a extensão quanto o MIME type do arquivo antes de processar o upload.
-- Arquivos como `.exe`, `.html` ou qualquer formato fora da lista permitida (`pdf`, `jpg`, `jpeg`, `png`, `gif`, `webp`) são rejeitados com toast de erro, impedindo o processamento mesmo se o navegador reportar um MIME type falsificado.
-
-### Otimização da Content Security Policy (CSP)
-- Removido `'unsafe-inline'` de `script-src` no `vercel.json`, eliminando a permissão genérica para execução de scripts inline.
-- Registro do Service Worker movido do `<script>` inline no `index.html` para o bundle JavaScript em `src/main.tsx`, executado no evento `load` do window.
-- `script-src` final: `'self' https://va.vercel-scripts.com` — apenas scripts do próprio domínio e Vercel Analytics são permitidos.
-
-### Row Level Security (RLS) no Supabase
-- Ativado RLS em todas as tabelas do banco (`profiles`, `songs`, `setlists`, `blocks`, `block_songs`, `setlist_members`, `setlist_invites`).
-- Criadas políticas de SELECT que permitem acesso a:
-  - **`songs`**: próprio usuário OU músicas referenciadas em setlists que o usuário tem acesso (via `block_songs` > `blocks` > `setlist_members`).
-  - **`setlists`**: próprio dono, membros do setlist, ou qualquer um com link de compartilhamento (`__link_share__`).
-  - **`blocks` / `block_songs`**: dono, membros, ou link de compartilhamento (SELECT); dono ou editor (INSERT/UPDATE/DELETE).
-  - **`profiles`**: todos os usuários autenticados podem SELECT (para resolução de e-mail); apenas o próprio usuário pode INSERT/UPDATE.
-- Criadas funções auxiliares `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`, `has_email_invite`) para reutilização nas políticas.
-- Trigger `on_auth_user_created` para criar perfil automaticamente no registro, incluindo e-mail.
-- Migração aplicada via `supabase db push` em `supabase/migrations/20260729235009_enable_rls.sql`.
-- **Correção de Recursão Infinita (20260729235011_fix_rls_recursion.sql)**: As policies originais continham subqueries SQL diretas em tabelas com RLS, criando ciclo entre `setlists` SELECT e `setlist_members` SELECT. Todas as subqueries foram substituídas por chamadas às funções `SECURITY DEFINER` (`is_setlist_owner`, `is_setlist_member`, `is_setlist_editor`, `has_link_share`), que bypassam RLS e eliminam a recursão.
-
-### CifraWebviewModal — Sandbox Corrigido
-- Removido `allow-same-origin` e `allow-scripts` do atributo `sandbox` do iframe de cifras. Antes: `allow-scripts allow-popups allow-forms allow-same-origin allow-storage-access-by-user-activation`. Depois: `allow-popups allow-forms allow-storage-access-by-user-activation`. A remoção coloca o iframe em unique origin, impedindo frame-busting via scripts do CifraClub.
-
-### Correção de Vazamento de Setlists via Link Share (Julho 2026)
-- Corrigido vazamento de segurança onde setlists com link de compartilhamento habilitado (`__link_share__`) apareciam como "Compartilhados Comigo" para usuários que nunca aceitaram um convite.
-- **Causa raiz**: Dois gatilhos encadeados:
-  1. `fetchRemoteDataFromSupabase()` (`src/lib/supabase.ts:881`) fazia `setlists.select('*')`, e a política RLS `users_select_setlists` retorna qualquer setlist com `__link_share__` para **todo usuário autenticado**. Esses setlists eram salvos no localStorage sem verificação de membership.
-  2. `syncLocalDataToSupabase()` (`src/lib/supabase.ts:611-627`) — ao encontrar um setlist não-dono no localStorage, chamava automaticamente `selfJoinSetlistAsMember(st.id, 'edit')`, inscrevendo o usuário como editor do setlist sem consentimento explícito.
-- **Correção A — Filtro no fetch** (`src/lib/supabase.ts:878-882`): Após buscar setlists do Supabase, filtra para manter apenas aqueles onde o usuário é dono (`st.user_id === currentUserUUID`) ou membro existente (`membersData` já filtrado por `user_id`).
-- **Correção B — Remoção do auto-join** (`src/lib/supabase.ts:611-622`): Removeu o `else` que chamava `selfJoinSetlistAsMember()`. Agora o sync apenas sincroniza edições se o usuário já for membro com papel `edit`; caso contrário, pula o setlist com log. O auto-join só ocorre no fluxo explícito de aceite via modal "Salvar na minha conta" em `App.tsx:handleAcceptShare()`.
-
-### Otimizações de Performance (Julho 2026)
-- **Parallelização de sync (`supabase.ts`)**: Block upserts e member upserts transformados de loops sequenciais para `Promise.all`, reduzindo drasticamente o tempo de sincronização.
-- **Remoção de upsert redundante de songs**: Cada música era upsertada 1x no batch + 1x por block_item que a referenciava. Removido o upsert individual (o batch já cobre todas).
-- **Filtros `.eq()` no fetch**: Adicionados filtros `user_id` nas queries de `songs` e `setlist_members`, evitando scan completo das tabelas com avaliação de RLS linha a linha.
-- **Memoização de `getCatalog()`**: `StorageEngine.getCatalog()` (que faz JSON.parse + sort a cada chamada) movido para `useMemo` em `SetlistDetail.tsx` e `FocusedBlockView.tsx`, eliminando chamadas redundantes no render loop.
-- **Merge de dados colaborativo no sync**: Ao fazer upsert de `block_songs`, o sync agora preserva valores do Supabase (`notes`, `requested_key`) quando o dado local não tem conteúdo. Isso evita que o sync do dono sobrescreva alterações feitas por editores.
+**Membro**:
+Músico que tem acesso persistente a um Setlist específico. Ou é Dono, Editor ou Visualizador.
+_Evitar_: Participante, Integrante
+
+**Convidado**:
+Músico que recebeu um Link de Acesso mas ainda não aceitou entrar como Membro. Não enxerga o Setlist até aceitar.
+_Evitar_: Pendente, Pré-membro
+
+**Link de Acesso**:
+URL curta gerada pelo Dono (ex: `/s/A7F3K9?role=edit`) que dá ingresso a um Setlist com um papel fixo. Pode ser revogada/regenerada pelo Dono. Elimina o conceito de convite por e-mail separado.
+_Evitar_: Invite, Convite, Link de compartilhamento (ambíguo)
+
+### Cifra e transposição
+
+**Cifra**:
+Letra de uma música acompanhada dos acordes, buscada de fonte externa e renderizada nativamente pelo app, transposta para o Tom solicitado calculado a partir do Drift.
+_Evitar_: Tablatura, Tab, Letra
+
+**Letra**:
+Apenas o texto cantado de uma música, sem acordes. É o que a Visualização por Role exibe para quem canta, e o fallback quando não há Cifra disponível na fonte externa.
+_Evitar_: Lyrics, Texto
+
+**Cifra Parseada**:
+Representação interna de uma Cifra após o parsing: uma lista de linhas, cada uma com o texto da letra e os acordes posicionados por índice de caractere. É sobre ela que a transposição opera.
+_Evitar_: Cifra processada, Chart, ChordPro
+
+**Cache de Cifra**:
+Armazenamento compartilhado de Cifras Parseadas, indexado por Slug de Cifra e comum a todos os Músicos. Não expira: só é renovado por ação explícita de atualizar.
+_Evitar_: Cache local, Cifra salva
+
+**Slug de Cifra**:
+Identificador de Artista/Música na URL do Cifra Club (`cifraclub.com.br/{slug-artista}/{slug-musica}`). Derivado automaticamente de Nome/Artista, mas pode ser sobrescrito por Override.
+_Evitar_: Identificador, Url-key
+
+**Override de Slug**:
+Estado de verdade do par de slugs de uma Música do Catálogo. Quando preenchido (manualmente ou por colar uma URL completa do Cifra Club), congela os slugs — editar Nome/Artista no Catálogo **não** re-deriva a URL. Badge "URL manual" o destaca visualmente.
+_Evitar_: Slug manual, Slug override (termo interno), Custom URL
+
+### Sincronização e replicação
+
+**Verdade Local**:
+Princípio arquitetural onde o dispositivo do Músico é a fonte verdadeira do estado de domínio durante a edição. O Supabase espelha. Funciona offline por tempo indeterminado.
+_Evitar_: Cache local (errado — cache é secundário; aqui é font), Estado offline
+
+**Tombstone**:
+Registro explícito de que uma entidade foi apagada. Elimina a ambiguidade de "está ausente porque foi apagado ou porque ainda não sincronizou". Toda deleção gera um; a entidade é removida da nuvem e dos merges somente quando um tombstone existe.
+_Evitar_: Marker de deleção, Soft delete, Lápide
+
+**Drift de Fetch**:
+Intervalo máximo plausível entre uma mutação por um Membro e a chegada visual ao outro Membro. Aceito em segundos, não em tempo real.
+_Evitar_: Latência, Atraso, Realtime
+
+### Planos e monetização
+
+**Plano Free**:
+Plano padrão ao se cadastrar. Permite até 16 Músicas do Catálogo e 1 Setlist, sem Documents, sem convidar e entrar via Link de Acesso apenas como Visualizador.
+_Evitar_: Plano básico, Free tier, Trial não-premium
+
+**Plano Premium**:
+Plano pago que remove os limites do Free. Permite catálogo ilimitado, Setlists ilimitados, 5 Documents por música, convidar Membros e entrar via Link de Acesso como Editor.
+_Evitar_: Plano Pro, Plano pago, Plus
+
+**Trial Premium**:
+Período de 7 dias em que todo Músico recém-cadastrado é tratado como Premium. Expira automaticamente para Plano Free sem intervenção.
+_Evitar_: Período grátis, Plano temporário
+
+**Vitalício**:
+Modalidade de pagamento que ativa o Plano Premium por tempo indeterminado após um pagamento único. É revertido automaticamente para Plano Free apenas se o pagamento for reembolsado.
+_Evitar_: Lifetime, Compra única, Pay-once
+
+**Mensal**:
+Modalidade de pagamento de assinatura recorrente do Plano Premium. Cancelada pelo Músico reverte para Plano Free ao fim do ciclo.
+_Evitar_: Subscription, Assinatura, Recorrente

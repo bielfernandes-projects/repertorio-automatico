@@ -8,3 +8,6 @@ coverage/
 !.env.example
 premium-plan.md
 security-audit.md
+
+# adicionado por `vercel link`
+.vercel
